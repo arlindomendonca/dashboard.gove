@@ -14,14 +14,11 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# CSS customizado para visual moderno
 st.markdown("""
 <style>
-    /* Fundo geral */
     .stApp { background-color: #0f1117; }
     section[data-testid="stSidebar"] { background-color: #1a1d27; }
 
-    /* Cards KPI */
     .kpi-card {
         background: linear-gradient(135deg, #1e2130, #252a3d);
         border: 1px solid #2e3450;
@@ -31,112 +28,90 @@ st.markdown("""
         box-shadow: 0 4px 15px rgba(0,0,0,0.3);
     }
     .kpi-label {
-        font-size: 13px;
-        color: #8b92a5;
-        text-transform: uppercase;
-        letter-spacing: 1px;
-        margin-bottom: 6px;
+        font-size: 13px; color: #8b92a5;
+        text-transform: uppercase; letter-spacing: 1px; margin-bottom: 6px;
     }
-    .kpi-value {
-        font-size: 32px;
-        font-weight: 700;
-        color: #ffffff;
-        line-height: 1.1;
-    }
-    .kpi-sub {
-        font-size: 12px;
-        color: #5c6880;
-        margin-top: 4px;
-    }
+    .kpi-value { font-size: 32px; font-weight: 700; color: #ffffff; line-height: 1.1; }
+    .kpi-sub { font-size: 12px; color: #5c6880; margin-top: 4px; }
     .kpi-delta-pos { color: #22c55e; font-size: 13px; margin-top: 4px; }
     .kpi-delta-neg { color: #ef4444; font-size: 13px; margin-top: 4px; }
-
-    /* Título principal */
-    .main-title {
-        font-size: 28px;
-        font-weight: 800;
-        color: #e2e8f0;
-        margin-bottom: 4px;
+    .main-title { font-size: 28px; font-weight: 800; color: #e2e8f0; margin-bottom: 4px; }
+    .main-subtitle { font-size: 14px; color: #64748b; margin-bottom: 28px; }
+    .section-title {
+        font-size: 13px; font-weight: 600; color: #94a3b8;
+        text-transform: uppercase; letter-spacing: 0.8px; margin: 16px 0 6px 0;
     }
-    .main-subtitle {
-        font-size: 14px;
-        color: #64748b;
-        margin-bottom: 28px;
-    }
-
-    /* Divider */
     hr { border-color: #2e3450; }
-
-    /* Plotly backgrounds */
-    .js-plotly-plot .plotly { border-radius: 12px; }
 </style>
 """, unsafe_allow_html=True)
 
 # ─────────────────────────────────────────────
-# Carregamento e Limpeza dos Dados
+# Constantes
+# ─────────────────────────────────────────────
+FAIXAS_ORDEM = [
+    "⚡ Menos de 5 min",
+    "🟢 5 a 30 min",
+    "🟡 30 min a 1h",
+    "🟠 1h a 4h",
+    "🔴 4h a 8h",
+    "🔵 8h a 24h",
+    "⛔ Acima de 24h",
+    "Sem registro",
+    "N/A",
+]
+
+FAIXA_COLORS = {
+    "⚡ Menos de 5 min": "#6366f1",
+    "🟢 5 a 30 min":     "#22c55e",
+    "🟡 30 min a 1h":    "#f59e0b",
+    "🟠 1h a 4h":        "#fb923c",
+    "🔴 4h a 8h":        "#ef4444",
+    "🔵 8h a 24h":       "#3b82f6",
+    "⛔ Acima de 24h":   "#7c3aed",
+    "Sem registro":      "#6b7280",
+    "N/A":               "#374151",
+}
+
+# ─────────────────────────────────────────────
+# Carregamento de dados
 # ─────────────────────────────────────────────
 @st.cache_data(show_spinner="Carregando base de atendimentos...")
 def load_data(filepath: str) -> pd.DataFrame:
-    try:
-        df = pd.read_csv(
-            filepath,
-            sep=";",
-            encoding="utf-8-sig",
-            low_memory=False,
-            dtype=str,
-        )
-    except Exception:
-        df = pd.read_csv(
-            filepath,
-            sep=";",
-            encoding="latin1",
-            low_memory=False,
-            dtype=str,
-        )
+    for enc in ("utf-8-sig", "latin1"):
+        try:
+            df = pd.read_csv(filepath, sep=";", encoding=enc,
+                             low_memory=False, dtype=str)
+            break
+        except Exception:
+            continue
 
-    # Remove linhas completamente vazias
     df.dropna(how="all", inplace=True)
-
-    # Normaliza nomes de colunas (remove espaços extras)
     df.columns = df.columns.str.strip()
 
-    # Converte datas
     for col in ["Aberto em", "Encerrado em"]:
         if col in df.columns:
             df[col] = pd.to_datetime(df[col], format="%d/%m/%Y %H:%M", errors="coerce")
 
-    # Converte Tempo Atendimento para segundos totais
     def parse_tempo(val):
         if pd.isna(val) or str(val).strip() in ("", "nan"):
             return None
         try:
-            parts = str(val).strip().split(":")
-            if len(parts) == 3:
-                h, m, s = int(parts[0]), int(parts[1]), int(float(parts[2]))
-                return h * 3600 + m * 60 + s
+            p = str(val).strip().split(":")
+            if len(p) == 3:
+                return int(p[0]) * 3600 + int(p[1]) * 60 + int(float(p[2]))
         except Exception:
             return None
 
-    if "Tempo Atendimento" in df.columns:
-        df["Tempo_seg"] = df["Tempo Atendimento"].apply(parse_tempo)
+    df["Tempo_seg"] = df["Tempo Atendimento"].apply(parse_tempo)
 
-    # Garante coluna Protocolo como string limpa
-    if "Protocolo" in df.columns:
-        df["Protocolo"] = df["Protocolo"].astype(str).str.strip()
-
-    # Limpa Status e Atendente
-    for col in ["Status", "Atendente", "Setor"]:
+    for col in ["Status", "Atendente", "Setor", "Faixa de Tempo", "Departamento"]:
         if col in df.columns:
             df[col] = df[col].astype(str).str.strip()
 
     return df
 
 
-# ─────────────────────────────────────────────
-# Carrega dados
-# ─────────────────────────────────────────────
-DATA_PATH = "base_atendimento.csv"
-
+DATA_PATH = "base_atendimento_enriquecida.csv"
 try:
     df_raw = load_data(DATA_PATH)
 except FileNotFoundError:
@@ -153,69 +128,68 @@ with st.sidebar:
     st.markdown("## ⚙️ Filtros")
     st.markdown("---")
 
-    # Período
-    min_date = df_raw["Aberto em"].min().date() if df_raw["Aberto em"].notna().any() else date.today()
-    max_date = df_raw["Aberto em"].max().date() if df_raw["Aberto em"].notna().any() else date.today()
+    min_date = df_raw["Aberto em"].dropna().min().date()
+    max_date = df_raw["Aberto em"].dropna().max().date()
 
-    st.markdown("**📅 Período de Abertura**")
+    st.markdown('<div class="section-title">📅 Período de Abertura</div>', unsafe_allow_html=True)
     date_ini = st.date_input("De", value=min_date, min_value=min_date, max_value=max_date)
     date_fim = st.date_input("Até", value=max_date, min_value=min_date, max_value=max_date)
-
     st.markdown("---")
 
-    # Setor
-    setores_disponiveis = sorted(
-        [s for s in df_raw["Setor"].dropna().unique() if s not in ("nan", "")]
-    )
-    setores_sel = st.multiselect(
-        "🏢 Setor",
-        options=setores_disponiveis,
-        default=[],
-        placeholder="Todos os setores",
-    )
-
+    deptos_disp = sorted([d for d in df_raw["Departamento"].dropna().unique()
+                          if d not in ("nan", "")])
+    st.markdown('<div class="section-title">🏛️ Departamento</div>', unsafe_allow_html=True)
+    deptos_sel = st.multiselect("Departamento", options=deptos_disp, default=[],
+                                placeholder="Todos os departamentos",
+                                label_visibility="collapsed")
     st.markdown("---")
 
-    # Status
-    status_disponiveis = sorted(
-        [s for s in df_raw["Status"].dropna().unique() if s not in ("nan", "")]
-    )
-    status_sel = st.multiselect(
-        "🔖 Status",
-        options=status_disponiveis,
-        default=[],
-        placeholder="Todos os status",
-    )
-
+    setores_disp = sorted([s for s in df_raw["Setor"].dropna().unique()
+                           if s not in ("nan", "", "-")])
+    st.markdown('<div class="section-title">🏢 Setor</div>', unsafe_allow_html=True)
+    setores_sel = st.multiselect("Setor", options=setores_disp, default=[],
+                                 placeholder="Todos os setores",
+                                 label_visibility="collapsed")
     st.markdown("---")
-    st.caption(f"Base carregada: **{len(df_raw):,}** registros")
+
+    status_disp = sorted([s for s in df_raw["Status"].dropna().unique()
+                          if s not in ("nan", "")])
+    st.markdown('<div class="section-title">🔖 Status</div>', unsafe_allow_html=True)
+    status_sel = st.multiselect("Status", options=status_disp, default=[],
+                                placeholder="Todos os status",
+                                label_visibility="collapsed")
+    st.markdown("---")
+
+    faixas_disp = [f for f in FAIXAS_ORDEM if f in df_raw["Faixa de Tempo"].unique()]
+    st.markdown('<div class="section-title">⏱️ Faixa de Tempo (TMA)</div>', unsafe_allow_html=True)
+    faixas_sel = st.multiselect("Faixa", options=faixas_disp, default=[],
+                                placeholder="Todas as faixas",
+                                label_visibility="collapsed")
+    st.markdown("---")
+    st.caption(f"Base: **{len(df_raw):,}** registros")
 
 # ─────────────────────────────────────────────
 # Aplica Filtros
 # ─────────────────────────────────────────────
 df = df_raw.copy()
-
-# Filtro de período
-df = df[
-    (df["Aberto em"].dt.date >= date_ini) &
-    (df["Aberto em"].dt.date <= date_fim)
-]
-
-# Filtro de setor
+df = df[(df["Aberto em"].dt.date >= date_ini) & (df["Aberto em"].dt.date <= date_fim)]
+if deptos_sel:
+    df = df[df["Departamento"].isin(deptos_sel)]
 if setores_sel:
     df = df[df["Setor"].isin(setores_sel)]
-
-# Filtro de status
 if status_sel:
     df = df[df["Status"].isin(status_sel)]
+if faixas_sel:
+    df = df[df["Faixa de Tempo"].isin(faixas_sel)]
 
 # ─────────────────────────────────────────────
 # Cabeçalho
 # ─────────────────────────────────────────────
 st.markdown('<div class="main-title">📊 Dashboard de Atendimentos</div>', unsafe_allow_html=True)
 st.markdown(
-    f'<div class="main-subtitle">Período: {date_ini.strftime("%d/%m/%Y")} a {date_fim.strftime("%d/%m/%Y")} '
-    f'&nbsp;|&nbsp; Registros filtrados: <b>{len(df):,}</b></div>',
+    f'<div class="main-subtitle">Período: {date_ini.strftime("%d/%m/%Y")} a '
+    f'{date_fim.strftime("%d/%m/%Y")} &nbsp;|&nbsp; '
+    f'Registros filtrados: <b>{len(df):,}</b></div>',
     unsafe_allow_html=True,
 )
 
@@ -226,266 +200,248 @@ total = len(df)
 encerrados = df[df["Status"].str.lower() == "encerrado"]
 pct_enc = (len(encerrados) / total * 100) if total > 0 else 0
 
-tma_seg = df["Tempo_seg"].dropna()
-tma_media_seg = tma_seg.mean() if len(tma_seg) > 0 else 0
+tma_seg_s = df["Tempo_seg"].dropna()
+tma_media_seg = tma_seg_s.mean() if len(tma_seg_s) > 0 else 0
 tma_min = tma_media_seg / 60
-if tma_min >= 60:
-    tma_str = f"{tma_min/60:.1f}h"
-else:
-    tma_str = f"{tma_min:.1f} min"
+tma_str = f"{tma_min/60:.1f}h" if tma_min >= 60 else f"{tma_min:.1f} min"
 
-# Volume hoje vs média diária
 hoje = date.today()
 vol_hoje = len(df[df["Aberto em"].dt.date == hoje])
-dias_unicos = df["Aberto em"].dt.date.nunique()
-media_diaria = total / dias_unicos if dias_unicos > 0 else 0
-delta_hoje = vol_hoje - media_diaria
-delta_pct = (delta_hoje / media_diaria * 100) if media_diaria > 0 else 0
+dias_unicos = max(df["Aberto em"].dt.date.nunique(), 1)
+media_diaria = total / dias_unicos
+delta_pct = ((vol_hoje - media_diaria) / media_diaria * 100) if media_diaria > 0 else 0
 
 k1, k2, k3, k4 = st.columns(4)
-
 with k1:
-    st.markdown(f"""
-    <div class="kpi-card">
+    st.markdown(f"""<div class="kpi-card">
         <div class="kpi-label">Total de Atendimentos</div>
         <div class="kpi-value">{total:,}</div>
         <div class="kpi-sub">no período selecionado</div>
     </div>""", unsafe_allow_html=True)
-
 with k2:
-    st.markdown(f"""
-    <div class="kpi-card">
+    st.markdown(f"""<div class="kpi-card">
         <div class="kpi-label">% Encerrados</div>
         <div class="kpi-value">{pct_enc:.1f}%</div>
         <div class="kpi-sub">{len(encerrados):,} de {total:,}</div>
     </div>""", unsafe_allow_html=True)
-
 with k3:
-    st.markdown(f"""
-    <div class="kpi-card">
+    st.markdown(f"""<div class="kpi-card">
         <div class="kpi-label">TMA (Tempo Médio)</div>
         <div class="kpi-value">{tma_str}</div>
-        <div class="kpi-sub">com base em encerrados</div>
+        <div class="kpi-sub">encerrados com tempo registrado</div>
     </div>""", unsafe_allow_html=True)
-
 with k4:
-    delta_class = "kpi-delta-pos" if delta_hoje >= 0 else "kpi-delta-neg"
-    delta_icon = "▲" if delta_hoje >= 0 else "▼"
-    st.markdown(f"""
-    <div class="kpi-card">
+    dc = "kpi-delta-pos" if delta_pct >= 0 else "kpi-delta-neg"
+    di = "▲" if delta_pct >= 0 else "▼"
+    st.markdown(f"""<div class="kpi-card">
         <div class="kpi-label">Hoje vs Média Diária</div>
         <div class="kpi-value">{vol_hoje:,}</div>
-        <div class="{delta_class}">{delta_icon} {abs(delta_pct):.1f}% vs média ({media_diaria:.0f}/dia)</div>
+        <div class="{dc}">{di} {abs(delta_pct):.1f}% vs média ({media_diaria:.0f}/dia)</div>
     </div>""", unsafe_allow_html=True)
 
 st.markdown("<br>", unsafe_allow_html=True)
 
 # ─────────────────────────────────────────────
-# Configuração visual dos gráficos
+# Helper tema escuro
 # ─────────────────────────────────────────────
-CHART_BG = "#1a1d27"
-PAPER_BG = "#1a1d27"
-FONT_COLOR = "#c8d0e0"
-GRID_COLOR = "#2e3450"
-
-def apply_dark_theme(fig):
+def dark(fig, height=320):
     fig.update_layout(
-        paper_bgcolor=PAPER_BG,
-        plot_bgcolor=CHART_BG,
-        font=dict(color=FONT_COLOR, family="Inter, sans-serif"),
-        xaxis=dict(gridcolor=GRID_COLOR, linecolor=GRID_COLOR, tickfont=dict(size=11)),
-        yaxis=dict(gridcolor=GRID_COLOR, linecolor=GRID_COLOR, tickfont=dict(size=11)),
+        paper_bgcolor="#1a1d27", plot_bgcolor="#1a1d27",
+        font=dict(color="#c8d0e0", family="Inter, sans-serif"),
+        xaxis=dict(gridcolor="#2e3450", linecolor="#2e3450", tickfont=dict(size=11)),
+        yaxis=dict(gridcolor="#2e3450", linecolor="#2e3450", tickfont=dict(size=11)),
         legend=dict(bgcolor="rgba(0,0,0,0)", font=dict(size=12)),
         margin=dict(l=10, r=10, t=40, b=10),
+        height=height,
     )
     return fig
 
+FC = "#c8d0e0"  # font color alias
+
 # ─────────────────────────────────────────────
-# Linha 1: Volume Temporal | Distribuição Status
+# Linha 1: Volume Temporal | Status Rosca
 # ─────────────────────────────────────────────
 col_l, col_r = st.columns([3, 1])
 
 with col_l:
     st.markdown("#### 📈 Volume Temporal de Atendimentos")
-
-    # Agrupa por dia
-    vol_dia = (
-        df.set_index("Aberto em")
-        .resample("D")
-        .size()
-        .reset_index(name="Quantidade")
-    )
+    vol_dia = (df.set_index("Aberto em").resample("D").size()
+               .reset_index(name="Quantidade"))
     vol_dia.columns = ["Data", "Quantidade"]
 
     if len(vol_dia) > 1:
-        fig_line = px.line(
-            vol_dia,
-            x="Data",
-            y="Quantidade",
-            markers=True,
-            color_discrete_sequence=["#6366f1"],
-        )
-        fig_line.update_traces(
-            line=dict(width=2.5),
-            marker=dict(size=6),
-            fill="tozeroy",
-            fillcolor="rgba(99,102,241,0.12)",
-        )
+        fig_line = px.line(vol_dia, x="Data", y="Quantidade", markers=True,
+                           color_discrete_sequence=["#6366f1"])
+        fig_line.update_traces(line=dict(width=2.5), marker=dict(size=6),
+                                fill="tozeroy", fillcolor="rgba(99,102,241,0.12)")
     else:
-        # Agrupa por hora quando há apenas 1 dia
-        vol_hora = (
-            df.set_index("Aberto em")
-            .resample("h")
-            .size()
-            .reset_index(name="Quantidade")
-        )
+        vol_hora = (df.set_index("Aberto em").resample("h").size()
+                    .reset_index(name="Quantidade"))
         vol_hora.columns = ["Hora", "Quantidade"]
-        fig_line = px.bar(
-            vol_hora,
-            x="Hora",
-            y="Quantidade",
-            color_discrete_sequence=["#6366f1"],
-        )
+        fig_line = px.bar(vol_hora, x="Hora", y="Quantidade",
+                          color_discrete_sequence=["#6366f1"])
 
-    apply_dark_theme(fig_line)
-    fig_line.update_layout(xaxis_title="", yaxis_title="Chamados", height=300)
+    dark(fig_line, 300)
+    fig_line.update_layout(xaxis_title="", yaxis_title="Chamados")
     st.plotly_chart(fig_line, use_container_width=True)
 
 with col_r:
     st.markdown("#### 🍩 Status")
-    status_count = df["Status"].value_counts().reset_index()
-    status_count.columns = ["Status", "Qtd"]
-
-    colors_pie = ["#6366f1", "#22c55e", "#f59e0b", "#ef4444", "#8b5cf6"]
+    sc = df["Status"].value_counts().reset_index()
+    sc.columns = ["Status", "Qtd"]
     fig_pie = go.Figure(go.Pie(
-        labels=status_count["Status"],
-        values=status_count["Qtd"],
-        hole=0.55,
-        marker=dict(colors=colors_pie[:len(status_count)]),
-        textfont=dict(size=12, color="#ffffff"),
-        insidetextorientation="horizontal",
+        labels=sc["Status"], values=sc["Qtd"], hole=0.55,
+        marker=dict(colors=["#6366f1","#22c55e","#f59e0b","#ef4444","#8b5cf6"]),
+        textfont=dict(size=12, color="#ffffff"), insidetextorientation="horizontal",
     ))
-    apply_dark_theme(fig_pie)
-    fig_pie.update_layout(
-        showlegend=True,
+    dark(fig_pie, 300)
+    fig_pie.update_layout(showlegend=True,
         legend=dict(orientation="v", x=0, y=0.5, font=dict(size=11)),
-        height=300,
-        margin=dict(l=0, r=0, t=40, b=0),
-    )
+        margin=dict(l=0, r=0, t=40, b=0))
     st.plotly_chart(fig_pie, use_container_width=True)
 
 # ─────────────────────────────────────────────
-# Linha 2: Top Setores | Desempenho Atendentes
+# Linha 2: Faixa de Tempo | Departamentos
 # ─────────────────────────────────────────────
 col_a, col_b = st.columns(2)
 
 with col_a:
-    st.markdown("#### 🏢 Top 10 Setores Mais Demandados")
-    top_setores = (
-        df[~df["Setor"].isin(["-", "nan", ""])]
-        ["Setor"]
+    st.markdown("#### ⏱️ Distribuição por Faixa de Tempo (TMA)")
+    df_faixa = df[~df["Faixa de Tempo"].isin(["N/A", "nan"])]
+    faixa_count = (
+        df_faixa["Faixa de Tempo"]
         .value_counts()
-        .head(10)
+        .reindex([f for f in FAIXAS_ORDEM if f in df_faixa["Faixa de Tempo"].unique()])
+        .fillna(0)
         .reset_index()
     )
-    top_setores.columns = ["Setor", "Qtd"]
-    top_setores = top_setores.sort_values("Qtd", ascending=True)
+    faixa_count.columns = ["Faixa", "Qtd"]
+    faixa_count["Cor"] = faixa_count["Faixa"].map(FAIXA_COLORS)
 
-    # Trunca nomes longos
-    top_setores["Setor_curto"] = top_setores["Setor"].apply(
-        lambda x: x[:45] + "…" if len(x) > 45 else x
-    )
-
-    fig_bar_h = px.bar(
-        top_setores,
-        x="Qtd",
-        y="Setor_curto",
-        orientation="h",
-        color="Qtd",
-        color_continuous_scale=["#312e81", "#6366f1", "#a5b4fc"],
-        text="Qtd",
-    )
-    fig_bar_h.update_traces(textposition="outside", textfont=dict(size=11, color=FONT_COLOR))
-    apply_dark_theme(fig_bar_h)
-    fig_bar_h.update_layout(
-        height=420,
-        yaxis_title="",
-        xaxis_title="Quantidade",
-        coloraxis_showscale=False,
-        yaxis=dict(tickfont=dict(size=10)),
-    )
-    st.plotly_chart(fig_bar_h, use_container_width=True)
+    fig_faixa = go.Figure(go.Bar(
+        x=faixa_count["Faixa"], y=faixa_count["Qtd"],
+        marker_color=faixa_count["Cor"],
+        text=faixa_count["Qtd"].apply(lambda x: f"{int(x):,}"),
+        textposition="outside", textfont=dict(size=11, color=FC),
+    ))
+    dark(fig_faixa, 360)
+    fig_faixa.update_layout(xaxis_title="", yaxis_title="Atendimentos",
+                             xaxis=dict(tickfont=dict(size=10)))
+    st.plotly_chart(fig_faixa, use_container_width=True)
 
 with col_b:
-    st.markdown("#### 👤 Desempenho por Atendente (Top 15)")
-    top_atendentes = (
-        df[~df["Atendente"].isin(["nan", "NÃO ATRIBUIDO", ""])]
-        ["Atendente"]
-        .value_counts()
-        .head(15)
-        .reset_index()
-    )
-    top_atendentes.columns = ["Atendente", "Qtd"]
-    top_atendentes = top_atendentes.sort_values("Qtd", ascending=False)
+    st.markdown("#### 🏛️ Atendimentos por Departamento")
+    df_dep = df[~df["Departamento"].isin(["nan", ""])]
+    depto_cnt = (df_dep["Departamento"].value_counts().head(15).reset_index())
+    depto_cnt.columns = ["Departamento", "Qtd"]
+    depto_cnt = depto_cnt.sort_values("Qtd", ascending=True)
 
-    fig_bar_v = px.bar(
-        top_atendentes,
-        x="Atendente",
-        y="Qtd",
-        color="Qtd",
-        color_continuous_scale=["#134e4a", "#10b981", "#6ee7b7"],
-        text="Qtd",
-    )
-    fig_bar_v.update_traces(textposition="outside", textfont=dict(size=11, color=FONT_COLOR))
-    apply_dark_theme(fig_bar_v)
-    fig_bar_v.update_layout(
-        height=420,
-        xaxis_title="",
-        yaxis_title="Atendimentos",
-        coloraxis_showscale=False,
-        xaxis=dict(tickangle=-35, tickfont=dict(size=10)),
-    )
-    st.plotly_chart(fig_bar_v, use_container_width=True)
+    fig_dep = px.bar(depto_cnt, x="Qtd", y="Departamento", orientation="h",
+                     color="Qtd",
+                     color_continuous_scale=["#1e3a5f","#3b82f6","#93c5fd"],
+                     text="Qtd")
+    fig_dep.update_traces(textposition="outside", textfont=dict(size=11, color=FC))
+    dark(fig_dep, 360)
+    fig_dep.update_layout(xaxis_title="Quantidade", yaxis_title="",
+                          coloraxis_showscale=False,
+                          yaxis=dict(tickfont=dict(size=10)))
+    st.plotly_chart(fig_dep, use_container_width=True)
 
 # ─────────────────────────────────────────────
-# Linha 3: TMA por Setor
+# Linha 3: Top Setores | Top Atendentes
 # ─────────────────────────────────────────────
-st.markdown("#### ⏱️ Tempo Médio de Atendimento (TMA) por Setor – Top 10")
-tma_setor = (
-    df[~df["Setor"].isin(["-", "nan", ""])]
-    .groupby("Setor")["Tempo_seg"]
-    .mean()
-    .dropna()
-    .sort_values(ascending=False)
-    .head(10)
-    .reset_index()
-)
-tma_setor.columns = ["Setor", "TMA_seg"]
-tma_setor["TMA_min"] = (tma_setor["TMA_seg"] / 60).round(1)
-tma_setor["Setor_curto"] = tma_setor["Setor"].apply(
-    lambda x: x[:45] + "…" if len(x) > 45 else x
-)
-tma_setor = tma_setor.sort_values("TMA_min", ascending=True)
+col_c, col_d = st.columns(2)
 
-fig_tma = px.bar(
-    tma_setor,
-    x="TMA_min",
-    y="Setor_curto",
-    orientation="h",
-    color="TMA_min",
-    color_continuous_scale=["#7c2d12", "#f97316", "#fed7aa"],
-    text=tma_setor["TMA_min"].apply(lambda x: f"{x:.1f} min"),
+with col_c:
+    st.markdown("#### 🏢 Top 10 Setores Mais Demandados")
+    top_set = (df[~df["Setor"].isin(["-","nan",""])]
+               ["Setor"].value_counts().head(10).reset_index())
+    top_set.columns = ["Setor", "Qtd"]
+    top_set = top_set.sort_values("Qtd", ascending=True)
+    top_set["Setor_curto"] = top_set["Setor"].apply(
+        lambda x: x[:42] + "…" if len(x) > 42 else x)
+
+    fig_set = px.bar(top_set, x="Qtd", y="Setor_curto", orientation="h",
+                     color="Qtd",
+                     color_continuous_scale=["#312e81","#6366f1","#a5b4fc"],
+                     text="Qtd")
+    fig_set.update_traces(textposition="outside", textfont=dict(size=11, color=FC))
+    dark(fig_set, 380)
+    fig_set.update_layout(xaxis_title="Quantidade", yaxis_title="",
+                          coloraxis_showscale=False,
+                          yaxis=dict(tickfont=dict(size=10)))
+    st.plotly_chart(fig_set, use_container_width=True)
+
+with col_d:
+    st.markdown("#### 👤 Top 15 Atendentes")
+    top_at = (df[~df["Atendente"].isin(["nan","NÃO ATRIBUIDO",""])]
+              ["Atendente"].value_counts().head(15).reset_index())
+    top_at.columns = ["Atendente", "Qtd"]
+    top_at = top_at.sort_values("Qtd", ascending=False)
+
+    fig_at = px.bar(top_at, x="Atendente", y="Qtd", color="Qtd",
+                    color_continuous_scale=["#134e4a","#10b981","#6ee7b7"],
+                    text="Qtd")
+    fig_at.update_traces(textposition="outside", textfont=dict(size=11, color=FC))
+    dark(fig_at, 380)
+    fig_at.update_layout(xaxis_title="", yaxis_title="Atendimentos",
+                         coloraxis_showscale=False,
+                         xaxis=dict(tickangle=-35, tickfont=dict(size=10)))
+    st.plotly_chart(fig_at, use_container_width=True)
+
+# ─────────────────────────────────────────────
+# Linha 4: TMA por Departamento
+# ─────────────────────────────────────────────
+st.markdown("#### ⏱️ TMA Médio por Departamento (encerrados com tempo registrado)")
+
+df_tma = (
+    df[
+        (df["Status"].str.lower() == "encerrado") &
+        (~df["Departamento"].isin(["nan", "Chatbot / Inatividade"]))
+    ]
+    .groupby("Departamento")["Tempo_seg"].mean()
+    .dropna().sort_values(ascending=False).head(12).reset_index()
 )
-fig_tma.update_traces(textposition="outside", textfont=dict(size=11, color=FONT_COLOR))
-apply_dark_theme(fig_tma)
-fig_tma.update_layout(
-    height=360,
-    xaxis_title="Minutos",
-    yaxis_title="",
-    coloraxis_showscale=False,
-    yaxis=dict(tickfont=dict(size=10)),
-)
+df_tma.columns = ["Departamento", "TMA_seg"]
+df_tma["TMA_min"] = (df_tma["TMA_seg"] / 60).round(1)
+df_tma["Label"] = df_tma["TMA_min"].apply(
+    lambda x: f"{x/60:.1f}h" if x >= 60 else f"{x:.1f} min")
+df_tma = df_tma.sort_values("TMA_min", ascending=True)
+
+fig_tma = px.bar(df_tma, x="TMA_min", y="Departamento", orientation="h",
+                 color="TMA_min",
+                 color_continuous_scale=["#7c2d12","#f97316","#fed7aa"],
+                 text="Label")
+fig_tma.update_traces(textposition="outside", textfont=dict(size=11, color=FC))
+dark(fig_tma, 400)
+fig_tma.update_layout(xaxis_title="Minutos", yaxis_title="",
+                      coloraxis_showscale=False,
+                      yaxis=dict(tickfont=dict(size=10)))
 st.plotly_chart(fig_tma, use_container_width=True)
+
+# ─────────────────────────────────────────────
+# Linha 5: Cruzamento Faixa × Departamento
+# ─────────────────────────────────────────────
+st.markdown("#### 📋 Cruzamento: Faixa de Tempo × Departamento")
+
+df_cross = df[~df["Faixa de Tempo"].isin(["N/A", "nan", "Sem registro"])]
+if not df_cross.empty:
+    pivot = (df_cross.groupby(["Departamento","Faixa de Tempo"])
+             .size().unstack(fill_value=0))
+    cols_ok = [f for f in FAIXAS_ORDEM if f in pivot.columns]
+    pivot = pivot[cols_ok]
+    pivot["Total"] = pivot.sum(axis=1)
+    pivot = pivot.sort_values("Total", ascending=False)
+
+    st.dataframe(
+        pivot.style
+        .background_gradient(cmap="Blues", subset=cols_ok)
+        .format("{:,.0f}"),
+        use_container_width=True,
+        height=min(60 + len(pivot) * 38, 520),
+    )
+else:
+    st.info("Sem dados para o cruzamento com os filtros atuais.")
 
 # ─────────────────────────────────────────────
 # Rodapé
@@ -493,5 +449,5 @@ st.plotly_chart(fig_tma, use_container_width=True)
 st.markdown("---")
 st.caption(
     f"Dashboard gerado em {datetime.now().strftime('%d/%m/%Y %H:%M')} • "
-    "Dados: base_atendimento.csv"
+    "Dados: base_atendimento_enriquecida.csv"
 )

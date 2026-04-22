@@ -211,21 +211,48 @@ with st.sidebar:
     _fallback = date.today()
     min_date = datas_validas.min().date() if len(datas_validas) > 0 else _fallback
     max_date = datas_validas.max().date() if len(datas_validas) > 0 else _fallback
-    # Garante que são objetos date Python puros (nunca NaT)
     if pd.isna(min_date): min_date = _fallback
     if pd.isna(max_date): max_date = _fallback
 
+    # Filtros rápidos (via session_state)
+    _ini_val = st.session_state.get("_date_ini", min_date)
+    _fim_val = st.session_state.get("_date_fim", max_date)
+
     st.markdown('<div class="section-title">📅 Período de Abertura</div>', unsafe_allow_html=True)
-    date_ini = st.date_input("De", value=min_date, min_value=min_date, max_value=max_date)
-    date_fim = st.date_input("Até", value=max_date, min_value=min_date, max_value=max_date)
+    date_ini = st.date_input("De", value=_ini_val, min_value=min_date, max_value=max_date, key="date_ini_w")
+    date_fim = st.date_input("Até", value=_fim_val, min_value=min_date, max_value=max_date, key="date_fim_w")
     st.markdown("---")
 
     CHATBOT_LABEL = "Chatbot / Inatividade"
-    ver_chatbot = st.checkbox("🤖 Ver Chatbot / Inatividade", value=False)
+    TI_LABEL      = "TI / Autenticação Digital"
+    HIDDEN_LABELS = {CHATBOT_LABEL, TI_LABEL}
+
+    st.markdown('<div class="section-title">⚡ Filtro Rápido</div>', unsafe_allow_html=True)
+    col_fw1, col_fw2 = st.columns(2)
+    with col_fw1:
+        if st.button("📅 Esta semana", use_container_width=True):
+            hoje_fw = date.today()
+            seg = hoje_fw - timedelta(days=hoje_fw.weekday())
+            dom = seg + timedelta(days=6)
+            st.session_state["_date_ini"] = max(seg, df_raw["Aberto em"].dropna().min().date())
+            st.session_state["_date_fim"] = min(dom, df_raw["Aberto em"].dropna().max().date())
+    with col_fw2:
+        if st.button("🗓️ Este mês", use_container_width=True):
+            hoje_fw = date.today()
+            inicio_mes = hoje_fw.replace(day=1)
+            st.session_state["_date_ini"] = max(inicio_mes, df_raw["Aberto em"].dropna().min().date())
+            st.session_state["_date_fim"] = df_raw["Aberto em"].dropna().max().date()
     st.markdown("---")
 
+    ver_chatbot = st.checkbox("🤖 Ver Chatbot / Inatividade", value=False)
+    ver_ti      = st.checkbox("💻 Ver TI / Autenticação Digital", value=False)
+    st.markdown("---")
+
+    hidden = set()
+    if not ver_chatbot: hidden.add(CHATBOT_LABEL)
+    if not ver_ti:      hidden.add(TI_LABEL)
     deptos_disp = sorted([d for d in df_raw["Departamento"].dropna().unique()
-                          if d not in ("nan", "", CHATBOT_LABEL)])
+                          if d not in ("nan", "") and d not in hidden])
     st.markdown('<div class="section-title">🏛️ Departamento</div>', unsafe_allow_html=True)
     deptos_sel = st.multiselect("Departamento", options=deptos_disp, default=[],
                                 placeholder="Todos os departamentos",
@@ -261,9 +288,11 @@ with st.sidebar:
 # ─────────────────────────────────────────────
 df = df_raw.copy()
 df = df[(df["Aberto em"].dt.date >= date_ini) & (df["Aberto em"].dt.date <= date_fim)]
-# Exclui Chatbot/Inatividade por padrão (a menos que checkbox esteja marcado)
+# Exclui grupos ocultos conforme checkboxes
 if not ver_chatbot:
     df = df[df["Departamento"] != "Chatbot / Inatividade"]
+if not ver_ti:
+    df = df[df["Departamento"] != "TI / Autenticação Digital"]
 if deptos_sel:
     df = df[df["Departamento"].isin(deptos_sel)]
 if setores_sel:
@@ -385,19 +414,37 @@ with aba_enc:
         st.plotly_chart(fig_line, use_container_width=True)
 
     with col_r:
-        st.markdown("#### 🍩 Status")
-        sc2 = df["Status"].value_counts().reset_index()
-        sc2.columns = ["Status", "Qtd"]
-        fig_pie = go.Figure(go.Pie(
-            labels=sc2["Status"], values=sc2["Qtd"], hole=0.55,
-            marker=dict(colors=["#6366f1","#22c55e","#f59e0b","#ef4444","#8b5cf6"]),
-            textfont=dict(size=12, color="#ffffff"), insidetextorientation="horizontal",
-        ))
-        dark(fig_pie, 300)
-        fig_pie.update_layout(showlegend=True,
-            legend=dict(orientation="v", x=0, y=0.5, font=dict(size=11)),
-            margin=dict(l=0, r=0, t=40, b=0))
-        st.plotly_chart(fig_pie, use_container_width=True)
+        st.markdown("#### 📊 % por Faixa de Tempo")
+        _df_f2 = df_enc[~df_enc["Faixa de Tempo"].isin(["N/A","nan","Sem registro"])]
+        if not _df_f2.empty:
+            _fc2 = (
+                _df_f2["Faixa de Tempo"].value_counts()
+                .reindex([f for f in FAIXAS_ORDEM if f in _df_f2["Faixa de Tempo"].unique()])
+                .fillna(0).reset_index()
+            )
+            _fc2.columns = ["Faixa","Qtd"]
+            _total2 = _fc2["Qtd"].sum()
+            _fc2["Pct"] = (_fc2["Qtd"] / _total2 * 100).round(1)
+            _fc2["Cor"] = _fc2["Faixa"].map(FAIXA_COLORS)
+            # Rosca percentual
+            fig_pct = go.Figure(go.Pie(
+                labels=_fc2["Faixa"],
+                values=_fc2["Qtd"],
+                hole=0.5,
+                marker=dict(colors=_fc2["Cor"].tolist()),
+                textinfo="percent",
+                textfont=dict(size=11, color="#ffffff"),
+                hovertemplate="<b>%{label}</b><br>%{value:,} atend. (%{percent})<extra></extra>",
+            ))
+            dark(fig_pct, 300)
+            fig_pct.update_layout(
+                showlegend=True,
+                legend=dict(orientation="v", x=-0.1, y=0.5, font=dict(size=9)),
+                margin=dict(l=0, r=0, t=40, b=0),
+            )
+            st.plotly_chart(fig_pct, use_container_width=True)
+        else:
+            st.info("Sem dados.")
 
     col_a, col_b = st.columns(2)
     with col_a:
@@ -469,14 +516,14 @@ with aba_enc:
         st.plotly_chart(fig_at, use_container_width=True)
 
     st.markdown("#### ⏱️ TMA Médio por Departamento — horas úteis (08:00–17:30)")
-    df_tma = (
-        df_enc[~df_enc["Departamento"].isin(["nan","Chatbot / Inatividade"])]
-        .groupby("Departamento")["Tempo_util_min"].mean()
-        .dropna().sort_values(ascending=False).head(12).reset_index()
-    )
-    df_tma.columns = ["Departamento","TMA_min"]
-    df_tma["Label"] = df_tma["TMA_min"].apply(fmt_minutos)
-    df_tma = df_tma.sort_values("TMA_min", ascending=True)
+    _df_tma_base = df_enc[~df_enc["Departamento"].isin(["nan","Chatbot / Inatividade","TI / Autenticação Digital"])]
+    _tma_agg = _df_tma_base.groupby("Departamento").agg(
+        TMA_min=("Tempo_util_min","mean"),
+        Qtd=("Tempo_util_min","count")
+    ).dropna().sort_values("TMA_min", ascending=False).head(12).reset_index()
+    _tma_agg["Label"] = _tma_agg.apply(
+        lambda r: f"{fmt_minutos(r['TMA_min'])}  ({int(r['Qtd']):,} atend.)", axis=1)
+    df_tma = _tma_agg.sort_values("TMA_min", ascending=True)
     fig_tma = px.bar(df_tma, x="TMA_min", y="Departamento", orientation="h",
                      color="TMA_min", color_continuous_scale=["#7c2d12","#f97316","#fed7aa"],
                      text="Label")

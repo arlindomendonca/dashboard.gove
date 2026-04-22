@@ -558,7 +558,10 @@ else:
 # ─────────────────────────────────────────────
 st.markdown("---")
 st.markdown("#### 🔴 Atendimentos em Aberto — Tempo Decorrido (horas úteis)")
-st.caption(f"🕒 Atualizado em: **{datetime.now().strftime('%d/%m/%Y %H:%M:%S')}** · Próxima atualização em 5 minutos")
+st.caption(
+    f"🕒 Atualizado em: **{datetime.now().strftime('%d/%m/%Y %H:%M:%S')}** "
+    "· Próxima atualização em 5 minutos"
+)
 
 df_abertos = df[df["Status"].str.lower() == "aberto"].copy()
 
@@ -568,113 +571,177 @@ else:
     agora = datetime.now()
 
     def tempo_aberto_util(abertura):
-        """Calcula horas úteis decorridas desde a abertura até agora."""
         if pd.isna(abertura):
             return None
         return minutos_uteis(abertura, agora)
 
-    df_abertos["Tempo em Aberto (min úteis)"] = df_abertos["Aberto em"].apply(tempo_aberto_util)
+    df_abertos["_min"] = df_abertos["Aberto em"].apply(tempo_aberto_util)
 
-    def fmt_tempo_aberto(min_u):
-        if min_u is None or pd.isna(min_u):
-            return "—"
-        h = int(min_u // 60)
-        m = int(min_u % 60)
-        if h == 0:
-            return f"{m}min"
-        dias = min_u / MINUTOS_DIA_UTIL
-        if dias >= 1:
-            return f"{dias:.1f}d úteis"
-        return f"{h}h {m:02d}min"
+    # ── Mesmas faixas dos encerrados ───────────────────────────
+    FAIXAS_AB_ORDEM = [
+        "⚡ Menos de 5 min",
+        "🟢 5 a 30 min",
+        "🟡 30 min a 1h",
+        "🟠 1h a 4h",
+        "🔴 4h a 8h",
+        "🔵 8h a 24h (1 dia útil)",
+        "⛔ Acima de 1 dia útil",
+    ]
+    FAIXAS_AB_COLORS = {
+        "⚡ Menos de 5 min":        "#6366f1",
+        "🟢 5 a 30 min":            "#22c55e",
+        "🟡 30 min a 1h":           "#f59e0b",
+        "🟠 1h a 4h":               "#fb923c",
+        "🔴 4h a 8h":               "#ef4444",
+        "🔵 8h a 24h (1 dia útil)": "#3b82f6",
+        "⛔ Acima de 1 dia útil":   "#7c3aed",
+    }
 
-    def urgencia(min_u):
-        if min_u is None or pd.isna(min_u): return "⚪ Sem dados"
-        if min_u < 30:    return "🟢 Normal"
-        if min_u < 60:    return "🟡 Atenção"
-        if min_u < 570:   return "🔴 Crítico"
-        return "⛔ Vencido"
+    def faixa_ab(m):
+        if m is None or pd.isna(m): return "⚡ Menos de 5 min"
+        if m < 5:      return "⚡ Menos de 5 min"
+        elif m < 30:   return "🟢 5 a 30 min"
+        elif m < 60:   return "🟡 30 min a 1h"
+        elif m < 240:  return "🟠 1h a 4h"
+        elif m < 480:  return "🔴 4h a 8h"
+        elif m < 570:  return "🔵 8h a 24h (1 dia útil)"
+        else:          return "⛔ Acima de 1 dia útil"
 
-    df_abertos["Tempo Decorrido"]  = df_abertos["Tempo em Aberto (min úteis)"].apply(fmt_tempo_aberto)
-    df_abertos["Urgência"]         = df_abertos["Tempo em Aberto (min úteis)"].apply(urgencia)
-    df_abertos["Aberto em fmt"]    = df_abertos["Aberto em"].dt.strftime("%d/%m/%Y %H:%M")
+    def fmt_ab(m):
+        if m is None or pd.isna(m): return "—"
+        h, mn = int(m // 60), int(m % 60)
+        if m / MINUTOS_DIA_UTIL >= 1:
+            return f"{m/MINUTOS_DIA_UTIL:.1f}d úteis"
+        if h == 0: return f"{mn}min"
+        return f"{h}h {mn:02d}min"
 
-    # KPIs dos abertos
+    df_abertos["Faixa"]          = df_abertos["_min"].apply(faixa_ab)
+    df_abertos["Tempo Decorrido"] = df_abertos["_min"].apply(fmt_ab)
+    df_abertos["Aberto em fmt"]  = df_abertos["Aberto em"].dt.strftime("%d/%m/%Y %H:%M")
+
+    # ── KPIs ───────────────────────────────────────────────────
+    total_ab   = len(df_abertos)
+    criticos   = len(df_abertos[df_abertos["Faixa"].isin(
+                     ["🔴 4h a 8h","🔵 8h a 24h (1 dia útil)","⛔ Acima de 1 dia útil"])])
+    vencidos   = len(df_abertos[df_abertos["Faixa"] == "⛔ Acima de 1 dia útil"])
+    tma_ab_str = fmt_minutos(df_abertos["_min"].dropna().mean()) if total_ab > 0 else "—"
+
     ka1, ka2, ka3, ka4 = st.columns(4)
-    total_ab = len(df_abertos)
-    criticos = len(df_abertos[df_abertos["Urgência"].isin(["🔴 Crítico","⛔ Vencido"])])
-    vencidos = len(df_abertos[df_abertos["Urgência"] == "⛔ Vencido"])
-    tma_ab   = df_abertos["Tempo em Aberto (min úteis)"].dropna()
-    tma_ab_str = fmt_minutos(tma_ab.mean()) if len(tma_ab) > 0 else "—"
-
     with ka1:
-        st.markdown(f"""<div class="kpi-card">
+        st.markdown(f'''<div class="kpi-card">
             <div class="kpi-label">Em Aberto</div>
             <div class="kpi-value" style="color:#f59e0b">{total_ab:,}</div>
             <div class="kpi-sub">atendimentos pendentes</div>
-        </div>""", unsafe_allow_html=True)
+        </div>''', unsafe_allow_html=True)
     with ka2:
-        st.markdown(f"""<div class="kpi-card">
-            <div class="kpi-label">🔴 Críticos (&gt;1h útil)</div>
+        st.markdown(f'''<div class="kpi-card">
+            <div class="kpi-label">🔴 Críticos (acima de 4h)</div>
             <div class="kpi-value" style="color:#ef4444">{criticos:,}</div>
-            <div class="kpi-sub">acima de 1h em aberto</div>
-        </div>""", unsafe_allow_html=True)
+            <div class="kpi-sub">faixas acima de 4h úteis</div>
+        </div>''', unsafe_allow_html=True)
     with ka3:
-        st.markdown(f"""<div class="kpi-card">
-            <div class="kpi-label">⛔ Vencidos (&gt;1 dia útil)</div>
+        st.markdown(f'''<div class="kpi-card">
+            <div class="kpi-label">⛔ Vencidos (acima de 1 dia)</div>
             <div class="kpi-value" style="color:#7c3aed">{vencidos:,}</div>
-            <div class="kpi-sub">acima de 570 min úteis</div>
-        </div>""", unsafe_allow_html=True)
+            <div class="kpi-sub">acima de 1 dia útil</div>
+        </div>''', unsafe_allow_html=True)
     with ka4:
-        st.markdown(f"""<div class="kpi-card">
+        st.markdown(f'''<div class="kpi-card">
             <div class="kpi-label">Tempo Médio em Aberto</div>
             <div class="kpi-value" style="color:#f97316">{tma_ab_str}</div>
             <div class="kpi-badge">horas úteis</div>
-        </div>""", unsafe_allow_html=True)
+        </div>''', unsafe_allow_html=True)
 
     st.markdown("<br>", unsafe_allow_html=True)
 
-    # Gráfico de urgência
-    urg_count = df_abertos["Urgência"].value_counts().reset_index()
-    urg_count.columns = ["Urgência", "Qtd"]
-    urg_order  = ["🟢 Normal","🟡 Atenção","🔴 Crítico","⛔ Vencido","⚪ Sem dados"]
-    urg_colors = {"🟢 Normal":"#22c55e","🟡 Atenção":"#f59e0b",
-                  "🔴 Crítico":"#ef4444","⛔ Vencido":"#7c3aed","⚪ Sem dados":"#6b7280"}
-    urg_count["Ordem"] = urg_count["Urgência"].map({v:i for i,v in enumerate(urg_order)})
-    urg_count = urg_count.sort_values("Ordem")
+    # ── Gráfico de faixas (igual aos encerrados) ───────────────
+    faixa_cnt = (
+        df_abertos["Faixa"].value_counts()
+        .reindex([f for f in FAIXAS_AB_ORDEM if f in df_abertos["Faixa"].unique()])
+        .fillna(0).reset_index()
+    )
+    faixa_cnt.columns = ["Faixa", "Qtd"]
+    faixa_cnt["Cor"] = faixa_cnt["Faixa"].map(FAIXAS_AB_COLORS)
+    total_faixa = faixa_cnt["Qtd"].sum()
+    faixa_cnt["Label"] = faixa_cnt.apply(
+        lambda r: f"{int(r['Qtd']):,}  ({r['Qtd']/total_faixa*100:.1f}%)"
+        if total_faixa > 0 else f"{int(r['Qtd']):,}", axis=1)
 
-    col_ug1, col_ug2 = st.columns([1, 2])
-    with col_ug1:
-        fig_urg = go.Figure(go.Bar(
-            x=urg_count["Urgência"], y=urg_count["Qtd"],
-            marker_color=[urg_colors.get(u,"#6b7280") for u in urg_count["Urgência"]],
-            text=urg_count["Qtd"], textposition="outside",
-            textfont=dict(size=12, color="#c8d0e0"),
+    col_g1, col_g2 = st.columns([3, 2])
+
+    with col_g1:
+        st.markdown("##### 📊 Distribuição por Faixa de Tempo (horas úteis em aberto)")
+        fig_fab = go.Figure(go.Bar(
+            x=faixa_cnt["Faixa"],
+            y=faixa_cnt["Qtd"],
+            marker_color=faixa_cnt["Cor"],
+            text=faixa_cnt["Label"],
+            textposition="outside",
+            textfont=dict(size=11, color="#c8d0e0"),
         ))
-        dark(fig_urg, 280)
-        fig_urg.update_layout(xaxis_title="", yaxis_title="Atendimentos",
-                               showlegend=False)
-        st.plotly_chart(fig_urg, use_container_width=True)
-
-    with col_ug2:
-        # Tabela dos abertos mais antigos (top 20 mais urgentes)
-        colunas_exibir = ["Protocolo","Atendente","Setor","Aberto em fmt","Tempo Decorrido","Urgência"]
-        rename_map = {"Aberto em fmt": "Aberto em"}
-        df_tabela = (df_abertos
-                     .sort_values("Tempo em Aberto (min úteis)", ascending=False)
-                     .head(20)[colunas_exibir]
-                     .rename(columns=rename_map))
-        st.dataframe(
-            df_tabela.style.apply(
-                lambda col: [
-                    "background-color:#2d1515; color:#ef4444" if "Vencido" in str(v)
-                    else "background-color:#1f1a2e; color:#a78bfa" if "Crítico" in str(v)
-                    else "background-color:#1c1f12; color:#f59e0b" if "Atenção" in str(v)
-                    else "" for v in col
-                ], subset=["Urgência"]
-            ).format({"Protocolo": "{}"}),
-            use_container_width=True,
-            height=260,
+        dark(fig_fab, 320)
+        fig_fab.update_layout(
+            xaxis_title="", yaxis_title="Atendimentos",
+            xaxis=dict(tickfont=dict(size=10)),
+            showlegend=False,
         )
+        st.plotly_chart(fig_fab, use_container_width=True)
+
+    with col_g2:
+        st.markdown("##### 🏛️ Faixa por Departamento")
+        if len(df_abertos) > 0:
+            piv = (df_abertos
+                   .groupby(["Departamento","Faixa"])
+                   .size().unstack(fill_value=0))
+            cols_p = [f for f in FAIXAS_AB_ORDEM if f in piv.columns]
+            if cols_p:
+                piv = piv[cols_p]
+                piv["Total"] = piv.sum(axis=1)
+                piv = piv.sort_values("Total", ascending=False)
+                fig_piv = go.Figure(go.Heatmap(
+                    z=piv[cols_p].values,
+                    x=[c.split(" ",1)[-1] if " " in c else c for c in cols_p],
+                    y=piv.index.tolist(),
+                    colorscale="YlOrRd",
+                    text=piv[cols_p].values,
+                    texttemplate="%{text}",
+                    textfont=dict(size=10),
+                    hovertemplate="<b>%{y}</b><br>%{x}: %{z}<extra></extra>",
+                    showscale=False,
+                ))
+                dark(fig_piv, 320)
+                fig_piv.update_layout(
+                    xaxis=dict(tickfont=dict(size=9), side="bottom"),
+                    yaxis=dict(tickfont=dict(size=9), autorange="reversed"),
+                    margin=dict(l=10, r=10, t=10, b=60),
+                )
+                st.plotly_chart(fig_piv, use_container_width=True)
+
+    # ── Tabela top 20 mais antigos ─────────────────────────────
+    st.markdown("##### 📋 Top 20 Atendimentos Mais Antigos em Aberto")
+    cols_tab = ["Protocolo","Atendente","Setor","Aberto em fmt","Tempo Decorrido","Faixa"]
+    df_tab = (df_abertos
+              .sort_values("_min", ascending=False)
+              .head(20)[cols_tab]
+              .rename(columns={"Aberto em fmt": "Aberto em", "Faixa": "Faixa de Tempo"}))
+
+    FAIXA_STYLE = {
+        "⛔ Acima de 1 dia útil":   "background-color:#2d1229; color:#c084fc",
+        "🔵 8h a 24h (1 dia útil)": "background-color:#172035; color:#60a5fa",
+        "🔴 4h a 8h":               "background-color:#2d1515; color:#f87171",
+        "🟠 1h a 4h":               "background-color:#2d1f0a; color:#fb923c",
+        "🟡 30 min a 1h":           "background-color:#2a2007; color:#fbbf24",
+        "🟢 5 a 30 min":            "background-color:#0f2a1a; color:#4ade80",
+        "⚡ Menos de 5 min":        "background-color:#1a1a2e; color:#818cf8",
+    }
+
+    st.dataframe(
+        df_tab.style
+        .applymap(lambda v: FAIXA_STYLE.get(str(v), ""), subset=["Faixa de Tempo"])
+        .format({"Protocolo": "{}"}),
+        use_container_width=True,
+        height=min(60 + len(df_tab) * 38, 460),
+    )
 
 # ─────────────────────────────────────────────
 # Rodapé + Auto-refresh a cada 5 minutos

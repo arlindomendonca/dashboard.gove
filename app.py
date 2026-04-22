@@ -201,8 +201,12 @@ with st.sidebar:
     date_fim = st.date_input("Até", value=max_date, min_value=min_date, max_value=max_date)
     st.markdown("---")
 
+    CHATBOT_LABEL = "Chatbot / Inatividade"
+    ver_chatbot = st.checkbox("🤖 Ver Chatbot / Inatividade", value=False)
+    st.markdown("---")
+
     deptos_disp = sorted([d for d in df_raw["Departamento"].dropna().unique()
-                          if d not in ("nan", "")])
+                          if d not in ("nan", "", CHATBOT_LABEL)])
     st.markdown('<div class="section-title">🏛️ Departamento</div>', unsafe_allow_html=True)
     deptos_sel = st.multiselect("Departamento", options=deptos_disp, default=[],
                                 placeholder="Todos os departamentos",
@@ -238,6 +242,9 @@ with st.sidebar:
 # ─────────────────────────────────────────────
 df = df_raw.copy()
 df = df[(df["Aberto em"].dt.date >= date_ini) & (df["Aberto em"].dt.date <= date_fim)]
+# Exclui Chatbot/Inatividade por padrão (a menos que checkbox esteja marcado)
+if not ver_chatbot:
+    df = df[df["Departamento"] != "Chatbot / Inatividade"]
 if deptos_sel:
     df = df[df["Departamento"].isin(deptos_sel)]
 if setores_sel:

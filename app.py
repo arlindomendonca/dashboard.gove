@@ -3,6 +3,7 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 from datetime import datetime, date, time, timedelta
+import time as time_module
 
 # ─────────────────────────────────────────────
 # Configuração da Página
@@ -553,7 +554,130 @@ else:
     st.info("Sem dados para o cruzamento com os filtros atuais.")
 
 # ─────────────────────────────────────────────
-# Rodapé
+# Seção: Atendimentos em Aberto (tempo real)
+# ─────────────────────────────────────────────
+st.markdown("---")
+st.markdown("#### 🔴 Atendimentos em Aberto — Tempo Decorrido (horas úteis)")
+st.caption(f"🕒 Atualizado em: **{datetime.now().strftime('%d/%m/%Y %H:%M:%S')}** · Próxima atualização em 5 minutos")
+
+df_abertos = df[df["Status"].str.lower() == "aberto"].copy()
+
+if df_abertos.empty:
+    st.success("✅ Nenhum atendimento em aberto no período/filtro selecionado.")
+else:
+    agora = datetime.now()
+
+    def tempo_aberto_util(abertura):
+        """Calcula horas úteis decorridas desde a abertura até agora."""
+        if pd.isna(abertura):
+            return None
+        return minutos_uteis(abertura, agora)
+
+    df_abertos["Tempo em Aberto (min úteis)"] = df_abertos["Aberto em"].apply(tempo_aberto_util)
+
+    def fmt_tempo_aberto(min_u):
+        if min_u is None or pd.isna(min_u):
+            return "—"
+        h = int(min_u // 60)
+        m = int(min_u % 60)
+        if h == 0:
+            return f"{m}min"
+        dias = min_u / MINUTOS_DIA_UTIL
+        if dias >= 1:
+            return f"{dias:.1f}d úteis"
+        return f"{h}h {m:02d}min"
+
+    def urgencia(min_u):
+        if min_u is None or pd.isna(min_u): return "⚪ Sem dados"
+        if min_u < 30:    return "🟢 Normal"
+        if min_u < 60:    return "🟡 Atenção"
+        if min_u < 570:   return "🔴 Crítico"
+        return "⛔ Vencido"
+
+    df_abertos["Tempo Decorrido"]  = df_abertos["Tempo em Aberto (min úteis)"].apply(fmt_tempo_aberto)
+    df_abertos["Urgência"]         = df_abertos["Tempo em Aberto (min úteis)"].apply(urgencia)
+    df_abertos["Aberto em fmt"]    = df_abertos["Aberto em"].dt.strftime("%d/%m/%Y %H:%M")
+
+    # KPIs dos abertos
+    ka1, ka2, ka3, ka4 = st.columns(4)
+    total_ab = len(df_abertos)
+    criticos = len(df_abertos[df_abertos["Urgência"].isin(["🔴 Crítico","⛔ Vencido"])])
+    vencidos = len(df_abertos[df_abertos["Urgência"] == "⛔ Vencido"])
+    tma_ab   = df_abertos["Tempo em Aberto (min úteis)"].dropna()
+    tma_ab_str = fmt_minutos(tma_ab.mean()) if len(tma_ab) > 0 else "—"
+
+    with ka1:
+        st.markdown(f"""<div class="kpi-card">
+            <div class="kpi-label">Em Aberto</div>
+            <div class="kpi-value" style="color:#f59e0b">{total_ab:,}</div>
+            <div class="kpi-sub">atendimentos pendentes</div>
+        </div>""", unsafe_allow_html=True)
+    with ka2:
+        st.markdown(f"""<div class="kpi-card">
+            <div class="kpi-label">🔴 Críticos (&gt;1h útil)</div>
+            <div class="kpi-value" style="color:#ef4444">{criticos:,}</div>
+            <div class="kpi-sub">acima de 1h em aberto</div>
+        </div>""", unsafe_allow_html=True)
+    with ka3:
+        st.markdown(f"""<div class="kpi-card">
+            <div class="kpi-label">⛔ Vencidos (&gt;1 dia útil)</div>
+            <div class="kpi-value" style="color:#7c3aed">{vencidos:,}</div>
+            <div class="kpi-sub">acima de 570 min úteis</div>
+        </div>""", unsafe_allow_html=True)
+    with ka4:
+        st.markdown(f"""<div class="kpi-card">
+            <div class="kpi-label">Tempo Médio em Aberto</div>
+            <div class="kpi-value" style="color:#f97316">{tma_ab_str}</div>
+            <div class="kpi-badge">horas úteis</div>
+        </div>""", unsafe_allow_html=True)
+
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    # Gráfico de urgência
+    urg_count = df_abertos["Urgência"].value_counts().reset_index()
+    urg_count.columns = ["Urgência", "Qtd"]
+    urg_order  = ["🟢 Normal","🟡 Atenção","🔴 Crítico","⛔ Vencido","⚪ Sem dados"]
+    urg_colors = {"🟢 Normal":"#22c55e","🟡 Atenção":"#f59e0b",
+                  "🔴 Crítico":"#ef4444","⛔ Vencido":"#7c3aed","⚪ Sem dados":"#6b7280"}
+    urg_count["Ordem"] = urg_count["Urgência"].map({v:i for i,v in enumerate(urg_order)})
+    urg_count = urg_count.sort_values("Ordem")
+
+    col_ug1, col_ug2 = st.columns([1, 2])
+    with col_ug1:
+        fig_urg = go.Figure(go.Bar(
+            x=urg_count["Urgência"], y=urg_count["Qtd"],
+            marker_color=[urg_colors.get(u,"#6b7280") for u in urg_count["Urgência"]],
+            text=urg_count["Qtd"], textposition="outside",
+            textfont=dict(size=12, color="#c8d0e0"),
+        ))
+        dark(fig_urg, 280)
+        fig_urg.update_layout(xaxis_title="", yaxis_title="Atendimentos",
+                               showlegend=False)
+        st.plotly_chart(fig_urg, use_container_width=True)
+
+    with col_ug2:
+        # Tabela dos abertos mais antigos (top 20 mais urgentes)
+        colunas_exibir = ["Protocolo","Atendente","Setor","Aberto em fmt","Tempo Decorrido","Urgência"]
+        rename_map = {"Aberto em fmt": "Aberto em"}
+        df_tabela = (df_abertos
+                     .sort_values("Tempo em Aberto (min úteis)", ascending=False)
+                     .head(20)[colunas_exibir]
+                     .rename(columns=rename_map))
+        st.dataframe(
+            df_tabela.style.apply(
+                lambda col: [
+                    "background-color:#2d1515; color:#ef4444" if "Vencido" in str(v)
+                    else "background-color:#1f1a2e; color:#a78bfa" if "Crítico" in str(v)
+                    else "background-color:#1c1f12; color:#f59e0b" if "Atenção" in str(v)
+                    else "" for v in col
+                ], subset=["Urgência"]
+            ).format({"Protocolo": "{}"}),
+            use_container_width=True,
+            height=260,
+        )
+
+# ─────────────────────────────────────────────
+# Rodapé + Auto-refresh a cada 5 minutos
 # ─────────────────────────────────────────────
 st.markdown("---")
 col_f1, col_f2 = st.columns(2)
@@ -567,3 +691,7 @@ with col_f2:
         "⏱️ Horas úteis: seg–sex, 08:00–17:30 · "
         "Feriados: 02/04, 20/04, 21/04/2026 · Sáb/Dom excluídos"
     )
+
+# Auto-refresh a cada 5 minutos (300 segundos)
+time_module.sleep(300)
+st.rerun()

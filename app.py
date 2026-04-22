@@ -270,8 +270,12 @@ if setores_sel:
     df = df[df["Setor"].isin(setores_sel)]
 if status_sel:
     df = df[df["Status"].isin(status_sel)]
+# O filtro de Faixa de Tempo se aplica APENAS aos encerrados.
+# Os abertos têm Faixa calculada em tempo real — não filtrar aqui.
 if faixas_sel:
-    df = df[df["Faixa de Tempo"].isin(faixas_sel)]
+    mask_enc_faixa = (df["Status"].str.lower() == "encerrado") & (df["Faixa de Tempo"].isin(faixas_sel))
+    mask_abertos   = df["Status"].str.lower() == "aberto"
+    df = df[mask_enc_faixa | mask_abertos]
 
 
 # ─────────────────────────────────────────────

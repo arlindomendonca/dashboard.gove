@@ -145,7 +145,11 @@ def load_data(filepath: str) -> pd.DataFrame:
 
     for col in ["Aberto em", "Encerrado em"]:
         if col in df.columns:
-            df[col] = pd.to_datetime(df[col], format="%d/%m/%Y %H:%M", errors="coerce")
+            # Tenta formato BR primeiro; se maioria falhar, usa inferência automática
+            parsed = pd.to_datetime(df[col], format="%d/%m/%Y %H:%M", errors="coerce")
+            if parsed.isna().mean() > 0.5:
+                parsed = pd.to_datetime(df[col], errors="coerce", dayfirst=True)
+            df[col] = parsed
 
     # Tempo útil em minutos (da coluna pré-calculada)
     if "Tempo Útil (HH:MM)" in df.columns:
@@ -184,8 +188,13 @@ with st.sidebar:
 
     st.markdown("---")
 
-    min_date = df_raw["Aberto em"].dropna().min().date()
-    max_date = df_raw["Aberto em"].dropna().max().date()
+    datas_validas = df_raw["Aberto em"].dropna()
+    _fallback = date.today()
+    min_date = datas_validas.min().date() if len(datas_validas) > 0 else _fallback
+    max_date = datas_validas.max().date() if len(datas_validas) > 0 else _fallback
+    # Garante que são objetos date Python puros (nunca NaT)
+    if pd.isna(min_date): min_date = _fallback
+    if pd.isna(max_date): max_date = _fallback
 
     st.markdown('<div class="section-title">📅 Período de Abertura</div>', unsafe_allow_html=True)
     date_ini = st.date_input("De", value=min_date, min_value=min_date, max_value=max_date)

@@ -255,6 +255,7 @@ if status_sel:
 if faixas_sel:
     df = df[df["Faixa de Tempo"].isin(faixas_sel)]
 
+
 # ─────────────────────────────────────────────
 # Cabeçalho
 # ─────────────────────────────────────────────
@@ -268,316 +269,239 @@ st.markdown(
 )
 
 # ─────────────────────────────────────────────
-# KPIs
+# ABAS PRINCIPAIS
 # ─────────────────────────────────────────────
-total = len(df)
-encerrados = df[df["Status"].str.lower() == "encerrado"]
-pct_enc = (len(encerrados) / total * 100) if total > 0 else 0
+aba_enc, aba_ab = st.tabs(["✅ Encerrados", "🔴 Em Aberto"])
 
-tma_s = df["Tempo_util_min"].dropna()
-tma_media = tma_s.mean() if len(tma_s) > 0 else 0
-tma_str = fmt_minutos(tma_media)
+# ════════════════════════════════════════════════════════════════
+# ABA 1 — ENCERRADOS
+# ════════════════════════════════════════════════════════════════
+with aba_enc:
 
-hoje = date.today()
-# Conta apenas dias úteis no período para a média
-all_days = pd.date_range(date_ini, date_fim)
-dias_uteis_periodo = sum(1 for d in all_days if is_dia_util(d.date()))
-vol_hoje = len(df[df["Aberto em"].dt.date == hoje])
-dias_uteis_periodo = max(dias_uteis_periodo, 1)
-media_diaria = total / dias_uteis_periodo
-delta_pct = ((vol_hoje - media_diaria) / media_diaria * 100) if media_diaria > 0 else 0
+    df_enc = df[df["Status"].str.lower() == "encerrado"].copy()
 
-# KPI extra: % dentro de 1h (SLA)
-dentro_sla = len(df[df["Faixa de Tempo"].isin(["⚡ Menos de 5 min","🟢 5 a 30 min","🟡 30 min a 1h"])])
-pct_sla = (dentro_sla / len(encerrados) * 100) if len(encerrados) > 0 else 0
+    # ── KPIs ──────────────────────────────────────────────────
+    total     = len(df)
+    pct_enc   = (len(df_enc) / total * 100) if total > 0 else 0
+    tma_s     = df_enc["Tempo_util_min"].dropna()
+    tma_str   = fmt_minutos(tma_s.mean()) if len(tma_s) > 0 else "—"
+    hoje      = date.today()
+    vol_hoje  = len(df[df["Aberto em"].dt.date == hoje])
+    all_days  = pd.date_range(date_ini, date_fim)
+    dias_uteis_periodo = max(sum(1 for d in all_days if is_dia_util(d.date())), 1)
+    media_diaria = total / dias_uteis_periodo
+    delta_pct    = ((vol_hoje - media_diaria) / media_diaria * 100) if media_diaria > 0 else 0
+    dentro_sla   = len(df_enc[df_enc["Faixa de Tempo"].isin(
+                        ["⚡ Menos de 5 min","🟢 5 a 30 min","🟡 30 min a 1h"])])
+    pct_sla = (dentro_sla / len(df_enc) * 100) if len(df_enc) > 0 else 0
 
-k1, k2, k3, k4, k5 = st.columns(5)
-with k1:
-    st.markdown(f"""<div class="kpi-card">
-        <div class="kpi-label">Total de Atendimentos</div>
-        <div class="kpi-value">{total:,}</div>
-        <div class="kpi-sub">no período</div>
-    </div>""", unsafe_allow_html=True)
-with k2:
-    st.markdown(f"""<div class="kpi-card">
-        <div class="kpi-label">% Encerrados</div>
-        <div class="kpi-value">{pct_enc:.1f}%</div>
-        <div class="kpi-sub">{len(encerrados):,} de {total:,}</div>
-    </div>""", unsafe_allow_html=True)
-with k3:
-    st.markdown(f"""<div class="kpi-card">
-        <div class="kpi-label">TMA (horas úteis)</div>
-        <div class="kpi-value">{tma_str}</div>
-        <div class="kpi-badge">08:00–17:30 · seg–sex</div>
-    </div>""", unsafe_allow_html=True)
-with k4:
-    dc = "kpi-delta-pos" if delta_pct >= 0 else "kpi-delta-neg"
-    di = "▲" if delta_pct >= 0 else "▼"
-    st.markdown(f"""<div class="kpi-card">
-        <div class="kpi-label">Hoje vs Média/Dia Útil</div>
-        <div class="kpi-value">{vol_hoje:,}</div>
-        <div class="{dc}">{di} {abs(delta_pct):.1f}% vs média ({media_diaria:.0f}/dia)</div>
-    </div>""", unsafe_allow_html=True)
-with k5:
-    sla_class = "kpi-delta-pos" if pct_sla >= 70 else "kpi-delta-neg"
-    st.markdown(f"""<div class="kpi-card">
-        <div class="kpi-label">SLA ≤ 1h (horas úteis)</div>
-        <div class="kpi-value">{pct_sla:.1f}%</div>
-        <div class="{sla_class}">{dentro_sla:,} atendimentos</div>
-    </div>""", unsafe_allow_html=True)
+    k1, k2, k3, k4, k5 = st.columns(5)
+    with k1:
+        st.markdown(f"""<div class="kpi-card">
+            <div class="kpi-label">Total Atendimentos</div>
+            <div class="kpi-value">{total:,}</div>
+            <div class="kpi-sub">no período</div>
+        </div>""", unsafe_allow_html=True)
+    with k2:
+        st.markdown(f"""<div class="kpi-card">
+            <div class="kpi-label">% Encerrados</div>
+            <div class="kpi-value">{pct_enc:.1f}%</div>
+            <div class="kpi-sub">{len(df_enc):,} de {total:,}</div>
+        </div>""", unsafe_allow_html=True)
+    with k3:
+        st.markdown(f"""<div class="kpi-card">
+            <div class="kpi-label">TMA (horas úteis)</div>
+            <div class="kpi-value">{tma_str}</div>
+            <div class="kpi-badge">08:00–17:30 · seg–sex</div>
+        </div>""", unsafe_allow_html=True)
+    with k4:
+        dc = "kpi-delta-pos" if delta_pct >= 0 else "kpi-delta-neg"
+        di = "▲" if delta_pct >= 0 else "▼"
+        st.markdown(f"""<div class="kpi-card">
+            <div class="kpi-label">Hoje vs Média/Dia Útil</div>
+            <div class="kpi-value">{vol_hoje:,}</div>
+            <div class="{dc}">{di} {abs(delta_pct):.1f}% vs média ({media_diaria:.0f}/dia)</div>
+        </div>""", unsafe_allow_html=True)
+    with k5:
+        sc = "kpi-delta-pos" if pct_sla >= 70 else "kpi-delta-neg"
+        st.markdown(f"""<div class="kpi-card">
+            <div class="kpi-label">SLA ≤ 1h (horas úteis)</div>
+            <div class="kpi-value">{pct_sla:.1f}%</div>
+            <div class="{sc}">{dentro_sla:,} atendimentos</div>
+        </div>""", unsafe_allow_html=True)
 
-st.markdown("<br>", unsafe_allow_html=True)
+    st.markdown("<br>", unsafe_allow_html=True)
 
-# ─────────────────────────────────────────────
-# Helper tema escuro
-# ─────────────────────────────────────────────
-def dark(fig, height=320):
-    fig.update_layout(
-        paper_bgcolor="#1a1d27", plot_bgcolor="#1a1d27",
-        font=dict(color="#c8d0e0", family="Inter, sans-serif"),
-        xaxis=dict(gridcolor="#2e3450", linecolor="#2e3450", tickfont=dict(size=11)),
-        yaxis=dict(gridcolor="#2e3450", linecolor="#2e3450", tickfont=dict(size=11)),
-        legend=dict(bgcolor="rgba(0,0,0,0)", font=dict(size=12)),
-        margin=dict(l=10, r=10, t=40, b=10),
-        height=height,
+    # ── Gráficos ──────────────────────────────────────────────
+    col_l, col_r = st.columns([3, 1])
+
+    with col_l:
+        st.markdown("#### 📈 Volume Temporal de Atendimentos (dias úteis)")
+        vol_dia = (df.set_index("Aberto em").resample("D").size()
+                   .reset_index(name="Quantidade"))
+        vol_dia.columns = ["Data", "Quantidade"]
+        vol_dia["Dia Útil"] = vol_dia["Data"].dt.date.apply(is_dia_util)
+        if len(vol_dia) > 1:
+            fig_line = px.line(vol_dia, x="Data", y="Quantidade", markers=True,
+                               color_discrete_sequence=["#6366f1"])
+            fig_line.update_traces(line=dict(width=2.5), marker=dict(size=6),
+                                    fill="tozeroy", fillcolor="rgba(99,102,241,0.12)")
+            for _, row in vol_dia[~vol_dia["Dia Útil"]].iterrows():
+                fig_line.add_vrect(
+                    x0=row["Data"] - pd.Timedelta(hours=12),
+                    x1=row["Data"] + pd.Timedelta(hours=12),
+                    fillcolor="rgba(239,68,68,0.08)", line_width=0,
+                )
+        else:
+            vol_hora = (df.set_index("Aberto em").resample("h").size()
+                        .reset_index(name="Quantidade"))
+            vol_hora.columns = ["Hora", "Quantidade"]
+            fig_line = px.bar(vol_hora, x="Hora", y="Quantidade",
+                              color_discrete_sequence=["#6366f1"])
+        dark(fig_line, 300)
+        fig_line.update_layout(xaxis_title="", yaxis_title="Chamados")
+        st.plotly_chart(fig_line, use_container_width=True)
+
+    with col_r:
+        st.markdown("#### 🍩 Status")
+        sc2 = df["Status"].value_counts().reset_index()
+        sc2.columns = ["Status", "Qtd"]
+        fig_pie = go.Figure(go.Pie(
+            labels=sc2["Status"], values=sc2["Qtd"], hole=0.55,
+            marker=dict(colors=["#6366f1","#22c55e","#f59e0b","#ef4444","#8b5cf6"]),
+            textfont=dict(size=12, color="#ffffff"), insidetextorientation="horizontal",
+        ))
+        dark(fig_pie, 300)
+        fig_pie.update_layout(showlegend=True,
+            legend=dict(orientation="v", x=0, y=0.5, font=dict(size=11)),
+            margin=dict(l=0, r=0, t=40, b=0))
+        st.plotly_chart(fig_pie, use_container_width=True)
+
+    col_a, col_b = st.columns(2)
+    with col_a:
+        st.markdown("#### ⏱️ Distribuição por Faixa de Tempo Útil")
+        df_faixa = df_enc[~df_enc["Faixa de Tempo"].isin(["N/A","nan","Sem registro"])]
+        faixa_count = (
+            df_faixa["Faixa de Tempo"].value_counts()
+            .reindex([f for f in FAIXAS_ORDEM if f in df_faixa["Faixa de Tempo"].unique()])
+            .fillna(0).reset_index()
+        )
+        faixa_count.columns = ["Faixa", "Qtd"]
+        faixa_count["Cor"] = faixa_count["Faixa"].map(FAIXA_COLORS)
+        fig_faixa = go.Figure(go.Bar(
+            x=faixa_count["Faixa"], y=faixa_count["Qtd"],
+            marker_color=faixa_count["Cor"],
+            text=faixa_count["Qtd"].apply(lambda x: f"{int(x):,}"),
+            textposition="outside", textfont=dict(size=11, color="#c8d0e0"),
+        ))
+        dark(fig_faixa, 360)
+        fig_faixa.update_layout(xaxis_title="", yaxis_title="Atendimentos",
+                                 xaxis=dict(tickfont=dict(size=10)))
+        st.plotly_chart(fig_faixa, use_container_width=True)
+
+    with col_b:
+        st.markdown("#### 🏛️ Atendimentos por Departamento")
+        df_dep = df_enc[~df_enc["Departamento"].isin(["nan",""])]
+        depto_cnt = df_dep["Departamento"].value_counts().head(15).reset_index()
+        depto_cnt.columns = ["Departamento","Qtd"]
+        depto_cnt = depto_cnt.sort_values("Qtd", ascending=True)
+        fig_dep = px.bar(depto_cnt, x="Qtd", y="Departamento", orientation="h",
+                         color="Qtd", color_continuous_scale=["#1e3a5f","#3b82f6","#93c5fd"],
+                         text="Qtd")
+        fig_dep.update_traces(textposition="outside", textfont=dict(size=11, color="#c8d0e0"))
+        dark(fig_dep, 360)
+        fig_dep.update_layout(xaxis_title="Quantidade", yaxis_title="",
+                              coloraxis_showscale=False, yaxis=dict(tickfont=dict(size=10)))
+        st.plotly_chart(fig_dep, use_container_width=True)
+
+    col_c, col_d = st.columns(2)
+    with col_c:
+        st.markdown("#### 🏢 Top 10 Setores Mais Demandados")
+        top_set = (df[~df["Setor"].isin(["-","nan",""])]
+                   ["Setor"].value_counts().head(10).reset_index())
+        top_set.columns = ["Setor","Qtd"]
+        top_set = top_set.sort_values("Qtd", ascending=True)
+        top_set["Setor_curto"] = top_set["Setor"].apply(lambda x: x[:42]+"…" if len(x)>42 else x)
+        fig_set = px.bar(top_set, x="Qtd", y="Setor_curto", orientation="h",
+                         color="Qtd", color_continuous_scale=["#312e81","#6366f1","#a5b4fc"],
+                         text="Qtd")
+        fig_set.update_traces(textposition="outside", textfont=dict(size=11, color="#c8d0e0"))
+        dark(fig_set, 380)
+        fig_set.update_layout(xaxis_title="Quantidade", yaxis_title="",
+                              coloraxis_showscale=False, yaxis=dict(tickfont=dict(size=10)))
+        st.plotly_chart(fig_set, use_container_width=True)
+
+    with col_d:
+        st.markdown("#### 👤 Top 15 Atendentes")
+        top_at = (df_enc[~df_enc["Atendente"].isin(["nan","NÃO ATRIBUIDO",""])]
+                  ["Atendente"].value_counts().head(15).reset_index())
+        top_at.columns = ["Atendente","Qtd"]
+        top_at = top_at.sort_values("Qtd", ascending=False)
+        fig_at = px.bar(top_at, x="Atendente", y="Qtd", color="Qtd",
+                        color_continuous_scale=["#134e4a","#10b981","#6ee7b7"], text="Qtd")
+        fig_at.update_traces(textposition="outside", textfont=dict(size=11, color="#c8d0e0"))
+        dark(fig_at, 380)
+        fig_at.update_layout(xaxis_title="", yaxis_title="Atendimentos",
+                             coloraxis_showscale=False,
+                             xaxis=dict(tickangle=-35, tickfont=dict(size=10)))
+        st.plotly_chart(fig_at, use_container_width=True)
+
+    st.markdown("#### ⏱️ TMA Médio por Departamento — horas úteis (08:00–17:30)")
+    df_tma = (
+        df_enc[~df_enc["Departamento"].isin(["nan","Chatbot / Inatividade"])]
+        .groupby("Departamento")["Tempo_util_min"].mean()
+        .dropna().sort_values(ascending=False).head(12).reset_index()
     )
-    return fig
+    df_tma.columns = ["Departamento","TMA_min"]
+    df_tma["Label"] = df_tma["TMA_min"].apply(fmt_minutos)
+    df_tma = df_tma.sort_values("TMA_min", ascending=True)
+    fig_tma = px.bar(df_tma, x="TMA_min", y="Departamento", orientation="h",
+                     color="TMA_min", color_continuous_scale=["#7c2d12","#f97316","#fed7aa"],
+                     text="Label")
+    fig_tma.update_traces(textposition="outside", textfont=dict(size=11, color="#c8d0e0"))
+    dark(fig_tma, 400)
+    fig_tma.update_layout(xaxis_title="Minutos úteis", yaxis_title="",
+                          coloraxis_showscale=False, yaxis=dict(tickfont=dict(size=10)))
+    st.plotly_chart(fig_tma, use_container_width=True)
 
-FC = "#c8d0e0"
-
-# ─────────────────────────────────────────────
-# Linha 1: Volume Temporal | Status Rosca
-# ─────────────────────────────────────────────
-col_l, col_r = st.columns([3, 1])
-
-with col_l:
-    st.markdown("#### 📈 Volume Temporal de Atendimentos (dias úteis)")
-    vol_dia = (df.set_index("Aberto em").resample("D").size()
-               .reset_index(name="Quantidade"))
-    vol_dia.columns = ["Data", "Quantidade"]
-    # Marca fins de semana / feriados
-    vol_dia["Dia Útil"] = vol_dia["Data"].dt.date.apply(is_dia_util)
-
-    if len(vol_dia) > 1:
-        fig_line = px.line(vol_dia, x="Data", y="Quantidade", markers=True,
-                           color_discrete_sequence=["#6366f1"])
-        fig_line.update_traces(line=dict(width=2.5), marker=dict(size=6),
-                                fill="tozeroy", fillcolor="rgba(99,102,241,0.12)")
-        # Destaca não-úteis com fundo vermelho suave
-        for _, row in vol_dia[~vol_dia["Dia Útil"]].iterrows():
-            fig_line.add_vrect(
-                x0=row["Data"] - pd.Timedelta(hours=12),
-                x1=row["Data"] + pd.Timedelta(hours=12),
-                fillcolor="rgba(239,68,68,0.08)", line_width=0,
-            )
+    st.markdown("#### 📋 Cruzamento: Faixa de Tempo Útil × Departamento")
+    df_cross = df_enc[~df_enc["Faixa de Tempo"].isin(["N/A","nan","Sem registro"])]
+    if not df_cross.empty:
+        pivot = (df_cross.groupby(["Departamento","Faixa de Tempo"])
+                 .size().unstack(fill_value=0))
+        cols_ok = [f for f in FAIXAS_ORDEM if f in pivot.columns]
+        pivot = pivot[cols_ok]
+        pivot["Total"] = pivot.sum(axis=1)
+        pivot = pivot.sort_values("Total", ascending=False)
+        fig_heat = go.Figure(go.Heatmap(
+            z=pivot[cols_ok].values,
+            x=[c.split(" ",1)[-1] if " " in c else c for c in cols_ok],
+            y=pivot.index.tolist(),
+            colorscale="Blues",
+            text=pivot[cols_ok].values,
+            texttemplate="%{text:,}",
+            textfont=dict(size=11),
+            hovertemplate="<b>%{y}</b><br>%{x}: %{z:,}<extra></extra>",
+            showscale=True,
+        ))
+        dark(fig_heat, max(300, 60 + len(pivot)*38))
+        fig_heat.update_layout(
+            xaxis=dict(tickfont=dict(size=10), side="bottom"),
+            yaxis=dict(tickfont=dict(size=10), autorange="reversed"),
+            margin=dict(l=10, r=10, t=20, b=60),
+        )
+        st.plotly_chart(fig_heat, use_container_width=True)
+        st.dataframe(pivot.style.format("{:,.0f}"),
+                     use_container_width=True,
+                     height=min(60 + len(pivot)*38, 420))
     else:
-        vol_hora = (df.set_index("Aberto em").resample("h").size()
-                    .reset_index(name="Quantidade"))
-        vol_hora.columns = ["Hora", "Quantidade"]
-        fig_line = px.bar(vol_hora, x="Hora", y="Quantidade",
-                          color_discrete_sequence=["#6366f1"])
+        st.info("Sem dados para o cruzamento com os filtros atuais.")
 
-    dark(fig_line, 300)
-    fig_line.update_layout(xaxis_title="", yaxis_title="Chamados")
-    st.plotly_chart(fig_line, use_container_width=True)
+# ════════════════════════════════════════════════════════════════
+# ABA 2 — EM ABERTO
+# ════════════════════════════════════════════════════════════════
+with aba_ab:
 
-with col_r:
-    st.markdown("#### 🍩 Status")
-    sc = df["Status"].value_counts().reset_index()
-    sc.columns = ["Status", "Qtd"]
-    fig_pie = go.Figure(go.Pie(
-        labels=sc["Status"], values=sc["Qtd"], hole=0.55,
-        marker=dict(colors=["#6366f1","#22c55e","#f59e0b","#ef4444","#8b5cf6"]),
-        textfont=dict(size=12, color="#ffffff"), insidetextorientation="horizontal",
-    ))
-    dark(fig_pie, 300)
-    fig_pie.update_layout(showlegend=True,
-        legend=dict(orientation="v", x=0, y=0.5, font=dict(size=11)),
-        margin=dict(l=0, r=0, t=40, b=0))
-    st.plotly_chart(fig_pie, use_container_width=True)
-
-# ─────────────────────────────────────────────
-# Linha 2: Faixa de Tempo Útil | Departamentos
-# ─────────────────────────────────────────────
-col_a, col_b = st.columns(2)
-
-with col_a:
-    st.markdown("#### ⏱️ Distribuição por Faixa de Tempo Útil")
-    df_faixa = df[~df["Faixa de Tempo"].isin(["N/A", "nan"])]
-    faixa_count = (
-        df_faixa["Faixa de Tempo"]
-        .value_counts()
-        .reindex([f for f in FAIXAS_ORDEM if f in df_faixa["Faixa de Tempo"].unique()])
-        .fillna(0).reset_index()
-    )
-    faixa_count.columns = ["Faixa", "Qtd"]
-    faixa_count["Cor"] = faixa_count["Faixa"].map(FAIXA_COLORS)
-
-    fig_faixa = go.Figure(go.Bar(
-        x=faixa_count["Faixa"], y=faixa_count["Qtd"],
-        marker_color=faixa_count["Cor"],
-        text=faixa_count["Qtd"].apply(lambda x: f"{int(x):,}"),
-        textposition="outside", textfont=dict(size=11, color=FC),
-    ))
-    dark(fig_faixa, 360)
-    fig_faixa.update_layout(xaxis_title="", yaxis_title="Atendimentos",
-                             xaxis=dict(tickfont=dict(size=10)))
-    st.plotly_chart(fig_faixa, use_container_width=True)
-
-with col_b:
-    st.markdown("#### 🏛️ Atendimentos por Departamento")
-    df_dep = df[~df["Departamento"].isin(["nan", ""])]
-    depto_cnt = df_dep["Departamento"].value_counts().head(15).reset_index()
-    depto_cnt.columns = ["Departamento", "Qtd"]
-    depto_cnt = depto_cnt.sort_values("Qtd", ascending=True)
-
-    fig_dep = px.bar(depto_cnt, x="Qtd", y="Departamento", orientation="h",
-                     color="Qtd",
-                     color_continuous_scale=["#1e3a5f","#3b82f6","#93c5fd"],
-                     text="Qtd")
-    fig_dep.update_traces(textposition="outside", textfont=dict(size=11, color=FC))
-    dark(fig_dep, 360)
-    fig_dep.update_layout(xaxis_title="Quantidade", yaxis_title="",
-                          coloraxis_showscale=False,
-                          yaxis=dict(tickfont=dict(size=10)))
-    st.plotly_chart(fig_dep, use_container_width=True)
-
-# ─────────────────────────────────────────────
-# Linha 3: Top Setores | Top Atendentes
-# ─────────────────────────────────────────────
-col_c, col_d = st.columns(2)
-
-with col_c:
-    st.markdown("#### 🏢 Top 10 Setores Mais Demandados")
-    top_set = (df[~df["Setor"].isin(["-","nan",""])]
-               ["Setor"].value_counts().head(10).reset_index())
-    top_set.columns = ["Setor", "Qtd"]
-    top_set = top_set.sort_values("Qtd", ascending=True)
-    top_set["Setor_curto"] = top_set["Setor"].apply(
-        lambda x: x[:42] + "…" if len(x) > 42 else x)
-    fig_set = px.bar(top_set, x="Qtd", y="Setor_curto", orientation="h",
-                     color="Qtd",
-                     color_continuous_scale=["#312e81","#6366f1","#a5b4fc"],
-                     text="Qtd")
-    fig_set.update_traces(textposition="outside", textfont=dict(size=11, color=FC))
-    dark(fig_set, 380)
-    fig_set.update_layout(xaxis_title="Quantidade", yaxis_title="",
-                          coloraxis_showscale=False,
-                          yaxis=dict(tickfont=dict(size=10)))
-    st.plotly_chart(fig_set, use_container_width=True)
-
-with col_d:
-    st.markdown("#### 👤 Top 15 Atendentes")
-    top_at = (df[~df["Atendente"].isin(["nan","NÃO ATRIBUIDO",""])]
-              ["Atendente"].value_counts().head(15).reset_index())
-    top_at.columns = ["Atendente", "Qtd"]
-    top_at = top_at.sort_values("Qtd", ascending=False)
-    fig_at = px.bar(top_at, x="Atendente", y="Qtd", color="Qtd",
-                    color_continuous_scale=["#134e4a","#10b981","#6ee7b7"],
-                    text="Qtd")
-    fig_at.update_traces(textposition="outside", textfont=dict(size=11, color=FC))
-    dark(fig_at, 380)
-    fig_at.update_layout(xaxis_title="", yaxis_title="Atendimentos",
-                         coloraxis_showscale=False,
-                         xaxis=dict(tickangle=-35, tickfont=dict(size=10)))
-    st.plotly_chart(fig_at, use_container_width=True)
-
-# ─────────────────────────────────────────────
-# Linha 4: TMA por Departamento (horas úteis)
-# ─────────────────────────────────────────────
-st.markdown("#### ⏱️ TMA Médio por Departamento — em horas úteis (08:00–17:30)")
-
-df_tma = (
-    df[
-        (df["Status"].str.lower() == "encerrado") &
-        (~df["Departamento"].isin(["nan","Chatbot / Inatividade"]))
-    ]
-    .groupby("Departamento")["Tempo_util_min"].mean()
-    .dropna().sort_values(ascending=False).head(12).reset_index()
-)
-df_tma.columns = ["Departamento", "TMA_min"]
-df_tma["Label"] = df_tma["TMA_min"].apply(fmt_minutos)
-df_tma = df_tma.sort_values("TMA_min", ascending=True)
-
-fig_tma = px.bar(df_tma, x="TMA_min", y="Departamento", orientation="h",
-                 color="TMA_min",
-                 color_continuous_scale=["#7c2d12","#f97316","#fed7aa"],
-                 text="Label")
-fig_tma.update_traces(textposition="outside", textfont=dict(size=11, color=FC))
-dark(fig_tma, 400)
-fig_tma.update_layout(xaxis_title="Minutos úteis", yaxis_title="",
-                      coloraxis_showscale=False,
-                      yaxis=dict(tickfont=dict(size=10)))
-st.plotly_chart(fig_tma, use_container_width=True)
-
-# ─────────────────────────────────────────────
-# Linha 5: Cruzamento Faixa × Departamento
-# ─────────────────────────────────────────────
-st.markdown("#### 📋 Cruzamento: Faixa de Tempo Útil × Departamento")
-
-df_cross = df[~df["Faixa de Tempo"].isin(["N/A", "nan", "Sem registro"])]
-if not df_cross.empty:
-    pivot = (df_cross.groupby(["Departamento","Faixa de Tempo"])
-             .size().unstack(fill_value=0))
-    cols_ok = [f for f in FAIXAS_ORDEM if f in pivot.columns]
-    pivot = pivot[cols_ok]
-    pivot["Total"] = pivot.sum(axis=1)
-    pivot = pivot.sort_values("Total", ascending=False)
-
-    # Heatmap via Plotly (sem matplotlib)
-    fig_heat = go.Figure(go.Heatmap(
-        z=pivot[cols_ok].values,
-        x=[c.split(" ", 1)[-1] if " " in c else c for c in cols_ok],
-        y=pivot.index.tolist(),
-        colorscale="Blues",
-        text=pivot[cols_ok].values,
-        texttemplate="%{text:,}",
-        textfont=dict(size=11),
-        hovertemplate="<b>%{y}</b><br>%{x}: %{z:,}<extra></extra>",
-        showscale=True,
-    ))
-    dark(fig_heat, max(300, 60 + len(pivot) * 38))
-    fig_heat.update_layout(
-        xaxis=dict(tickfont=dict(size=10), side="bottom"),
-        yaxis=dict(tickfont=dict(size=10), autorange="reversed"),
-        margin=dict(l=10, r=10, t=20, b=60),
-    )
-    st.plotly_chart(fig_heat, use_container_width=True)
-
-    # Tabela simples sem gradient (sem matplotlib)
-    st.dataframe(
-        pivot.style.format("{:,.0f}"),
-        use_container_width=True,
-        height=min(60 + len(pivot) * 38, 420),
-    )
-else:
-    st.info("Sem dados para o cruzamento com os filtros atuais.")
-
-# ─────────────────────────────────────────────
-# Seção: Atendimentos em Aberto (tempo real)
-# ─────────────────────────────────────────────
-st.markdown("---")
-st.markdown("#### 🔴 Atendimentos em Aberto — Tempo Decorrido (horas úteis)")
-st.caption(
-    f"🕒 Atualizado em: **{datetime.now().strftime('%d/%m/%Y %H:%M:%S')}** "
-    "· Próxima atualização em 5 minutos"
-)
-
-df_abertos = df[df["Status"].str.lower() == "aberto"].copy()
-
-if df_abertos.empty:
-    st.success("✅ Nenhum atendimento em aberto no período/filtro selecionado.")
-else:
-    agora = datetime.now()
-
-    def tempo_aberto_util(abertura):
-        if pd.isna(abertura):
-            return None
-        return minutos_uteis(abertura, agora)
-
-    df_abertos["_min"] = df_abertos["Aberto em"].apply(tempo_aberto_util)
-
-    # ── Mesmas faixas dos encerrados ───────────────────────────
     FAIXAS_AB_ORDEM = [
         "⚡ Menos de 5 min",
         "🟢 5 a 30 min",
@@ -596,102 +520,124 @@ else:
         "🔵 8h a 24h (1 dia útil)": "#3b82f6",
         "⛔ Acima de 1 dia útil":   "#7c3aed",
     }
+    FAIXA_STYLE = {
+        "⛔ Acima de 1 dia útil":   "background-color:#2d1229; color:#c084fc",
+        "🔵 8h a 24h (1 dia útil)": "background-color:#172035; color:#60a5fa",
+        "🔴 4h a 8h":               "background-color:#2d1515; color:#f87171",
+        "🟠 1h a 4h":               "background-color:#2d1f0a; color:#fb923c",
+        "🟡 30 min a 1h":           "background-color:#2a2007; color:#fbbf24",
+        "🟢 5 a 30 min":            "background-color:#0f2a1a; color:#4ade80",
+        "⚡ Menos de 5 min":        "background-color:#1a1a2e; color:#818cf8",
+    }
 
-    def faixa_ab(m):
-        if m is None or pd.isna(m): return "⚡ Menos de 5 min"
-        if m < 5:      return "⚡ Menos de 5 min"
-        elif m < 30:   return "🟢 5 a 30 min"
-        elif m < 60:   return "🟡 30 min a 1h"
-        elif m < 240:  return "🟠 1h a 4h"
-        elif m < 480:  return "🔴 4h a 8h"
-        elif m < 570:  return "🔵 8h a 24h (1 dia útil)"
-        else:          return "⛔ Acima de 1 dia útil"
-
-    def fmt_ab(m):
-        if m is None or pd.isna(m): return "—"
-        h, mn = int(m // 60), int(m % 60)
-        if m / MINUTOS_DIA_UTIL >= 1:
-            return f"{m/MINUTOS_DIA_UTIL:.1f}d úteis"
-        if h == 0: return f"{mn}min"
-        return f"{h}h {mn:02d}min"
-
-    df_abertos["Faixa"]          = df_abertos["_min"].apply(faixa_ab)
-    df_abertos["Tempo Decorrido"] = df_abertos["_min"].apply(fmt_ab)
-    df_abertos["Aberto em fmt"]  = df_abertos["Aberto em"].dt.strftime("%d/%m/%Y %H:%M")
-
-    # ── KPIs ───────────────────────────────────────────────────
-    total_ab   = len(df_abertos)
-    criticos   = len(df_abertos[df_abertos["Faixa"].isin(
-                     ["🔴 4h a 8h","🔵 8h a 24h (1 dia útil)","⛔ Acima de 1 dia útil"])])
-    vencidos   = len(df_abertos[df_abertos["Faixa"] == "⛔ Acima de 1 dia útil"])
-    tma_ab_str = fmt_minutos(df_abertos["_min"].dropna().mean()) if total_ab > 0 else "—"
-
-    ka1, ka2, ka3, ka4 = st.columns(4)
-    with ka1:
-        st.markdown(f'''<div class="kpi-card">
-            <div class="kpi-label">Em Aberto</div>
-            <div class="kpi-value" style="color:#f59e0b">{total_ab:,}</div>
-            <div class="kpi-sub">atendimentos pendentes</div>
-        </div>''', unsafe_allow_html=True)
-    with ka2:
-        st.markdown(f'''<div class="kpi-card">
-            <div class="kpi-label">🔴 Críticos (acima de 4h)</div>
-            <div class="kpi-value" style="color:#ef4444">{criticos:,}</div>
-            <div class="kpi-sub">faixas acima de 4h úteis</div>
-        </div>''', unsafe_allow_html=True)
-    with ka3:
-        st.markdown(f'''<div class="kpi-card">
-            <div class="kpi-label">⛔ Vencidos (acima de 1 dia)</div>
-            <div class="kpi-value" style="color:#7c3aed">{vencidos:,}</div>
-            <div class="kpi-sub">acima de 1 dia útil</div>
-        </div>''', unsafe_allow_html=True)
-    with ka4:
-        st.markdown(f'''<div class="kpi-card">
-            <div class="kpi-label">Tempo Médio em Aberto</div>
-            <div class="kpi-value" style="color:#f97316">{tma_ab_str}</div>
-            <div class="kpi-badge">horas úteis</div>
-        </div>''', unsafe_allow_html=True)
-
-    st.markdown("<br>", unsafe_allow_html=True)
-
-    # ── Gráfico de faixas (igual aos encerrados) ───────────────
-    faixa_cnt = (
-        df_abertos["Faixa"].value_counts()
-        .reindex([f for f in FAIXAS_AB_ORDEM if f in df_abertos["Faixa"].unique()])
-        .fillna(0).reset_index()
+    st.caption(
+        f"🕒 Atualizado em: **{datetime.now().strftime('%d/%m/%Y %H:%M:%S')}** "
+        "· Próxima atualização em 5 minutos"
     )
-    faixa_cnt.columns = ["Faixa", "Qtd"]
-    faixa_cnt["Cor"] = faixa_cnt["Faixa"].map(FAIXAS_AB_COLORS)
-    total_faixa = faixa_cnt["Qtd"].sum()
-    faixa_cnt["Label"] = faixa_cnt.apply(
-        lambda r: f"{int(r['Qtd']):,}  ({r['Qtd']/total_faixa*100:.1f}%)"
-        if total_faixa > 0 else f"{int(r['Qtd']):,}", axis=1)
 
-    col_g1, col_g2 = st.columns([3, 2])
+    df_abertos = df[df["Status"].str.lower() == "aberto"].copy()
 
-    with col_g1:
-        st.markdown("##### 📊 Distribuição por Faixa de Tempo (horas úteis em aberto)")
-        fig_fab = go.Figure(go.Bar(
-            x=faixa_cnt["Faixa"],
-            y=faixa_cnt["Qtd"],
-            marker_color=faixa_cnt["Cor"],
-            text=faixa_cnt["Label"],
-            textposition="outside",
-            textfont=dict(size=11, color="#c8d0e0"),
-        ))
-        dark(fig_fab, 320)
-        fig_fab.update_layout(
-            xaxis_title="", yaxis_title="Atendimentos",
-            xaxis=dict(tickfont=dict(size=10)),
-            showlegend=False,
+    if df_abertos.empty:
+        st.success("✅ Nenhum atendimento em aberto no período/filtro selecionado.")
+    else:
+        agora = datetime.now()
+
+        def tempo_aberto_util(abertura):
+            if pd.isna(abertura):
+                return None
+            return minutos_uteis(abertura, agora)
+
+        df_abertos["_min"] = df_abertos["Aberto em"].apply(tempo_aberto_util)
+
+        def faixa_ab(m):
+            if m is None or pd.isna(m): return "⚡ Menos de 5 min"
+            if m < 5:      return "⚡ Menos de 5 min"
+            elif m < 30:   return "🟢 5 a 30 min"
+            elif m < 60:   return "🟡 30 min a 1h"
+            elif m < 240:  return "🟠 1h a 4h"
+            elif m < 480:  return "🔴 4h a 8h"
+            elif m < 570:  return "🔵 8h a 24h (1 dia útil)"
+            else:          return "⛔ Acima de 1 dia útil"
+
+        def fmt_ab(m):
+            if m is None or pd.isna(m): return "—"
+            h, mn = int(m // 60), int(m % 60)
+            if m / MINUTOS_DIA_UTIL >= 1:
+                return f"{m/MINUTOS_DIA_UTIL:.1f}d úteis"
+            if h == 0: return f"{mn}min"
+            return f"{h}h {mn:02d}min"
+
+        df_abertos["Faixa"]           = df_abertos["_min"].apply(faixa_ab)
+        df_abertos["Tempo Decorrido"] = df_abertos["_min"].apply(fmt_ab)
+        df_abertos["Aberto em fmt"]   = df_abertos["Aberto em"].dt.strftime("%d/%m/%Y %H:%M")
+
+        # ── KPIs ──────────────────────────────────────────────
+        total_ab   = len(df_abertos)
+        criticos   = len(df_abertos[df_abertos["Faixa"].isin(
+                         ["🔴 4h a 8h","🔵 8h a 24h (1 dia útil)","⛔ Acima de 1 dia útil"])])
+        vencidos   = len(df_abertos[df_abertos["Faixa"] == "⛔ Acima de 1 dia útil"])
+        tma_ab_str = fmt_minutos(df_abertos["_min"].dropna().mean()) if total_ab > 0 else "—"
+
+        ka1, ka2, ka3, ka4 = st.columns(4)
+        with ka1:
+            st.markdown(f"""<div class="kpi-card">
+                <div class="kpi-label">Em Aberto</div>
+                <div class="kpi-value" style="color:#f59e0b">{total_ab:,}</div>
+                <div class="kpi-sub">atendimentos pendentes</div>
+            </div>""", unsafe_allow_html=True)
+        with ka2:
+            st.markdown(f"""<div class="kpi-card">
+                <div class="kpi-label">🔴 Críticos (acima de 4h)</div>
+                <div class="kpi-value" style="color:#ef4444">{criticos:,}</div>
+                <div class="kpi-sub">faixas acima de 4h úteis</div>
+            </div>""", unsafe_allow_html=True)
+        with ka3:
+            st.markdown(f"""<div class="kpi-card">
+                <div class="kpi-label">⛔ Vencidos (acima de 1 dia)</div>
+                <div class="kpi-value" style="color:#7c3aed">{vencidos:,}</div>
+                <div class="kpi-sub">acima de 1 dia útil</div>
+            </div>""", unsafe_allow_html=True)
+        with ka4:
+            st.markdown(f"""<div class="kpi-card">
+                <div class="kpi-label">Tempo Médio em Aberto</div>
+                <div class="kpi-value" style="color:#f97316">{tma_ab_str}</div>
+                <div class="kpi-badge">horas úteis</div>
+            </div>""", unsafe_allow_html=True)
+
+        st.markdown("<br>", unsafe_allow_html=True)
+
+        # ── Faixas de tempo ────────────────────────────────────
+        faixa_cnt = (
+            df_abertos["Faixa"].value_counts()
+            .reindex([f for f in FAIXAS_AB_ORDEM if f in df_abertos["Faixa"].unique()])
+            .fillna(0).reset_index()
         )
-        st.plotly_chart(fig_fab, use_container_width=True)
+        faixa_cnt.columns = ["Faixa","Qtd"]
+        faixa_cnt["Cor"] = faixa_cnt["Faixa"].map(FAIXAS_AB_COLORS)
+        total_f = faixa_cnt["Qtd"].sum()
+        faixa_cnt["Label"] = faixa_cnt.apply(
+            lambda r: f"{int(r['Qtd']):,}  ({r['Qtd']/total_f*100:.1f}%)"
+            if total_f > 0 else f"{int(r['Qtd']):,}", axis=1)
 
-    with col_g2:
-        st.markdown("##### 🏛️ Faixa por Departamento")
-        if len(df_abertos) > 0:
-            piv = (df_abertos
-                   .groupby(["Departamento","Faixa"])
+        col_g1, col_g2 = st.columns([3, 2])
+
+        with col_g1:
+            st.markdown("#### 📊 Distribuição por Faixa de Tempo (horas úteis em aberto)")
+            fig_fab = go.Figure(go.Bar(
+                x=faixa_cnt["Faixa"], y=faixa_cnt["Qtd"],
+                marker_color=faixa_cnt["Cor"],
+                text=faixa_cnt["Label"],
+                textposition="outside",
+                textfont=dict(size=11, color="#c8d0e0"),
+            ))
+            dark(fig_fab, 340)
+            fig_fab.update_layout(xaxis_title="", yaxis_title="Atendimentos",
+                                   xaxis=dict(tickfont=dict(size=10)), showlegend=False)
+            st.plotly_chart(fig_fab, use_container_width=True)
+
+        with col_g2:
+            st.markdown("#### 🏛️ Faixa por Departamento")
+            piv = (df_abertos.groupby(["Departamento","Faixa"])
                    .size().unstack(fill_value=0))
             cols_p = [f for f in FAIXAS_AB_ORDEM if f in piv.columns]
             if cols_p:
@@ -709,7 +655,7 @@ else:
                     hovertemplate="<b>%{y}</b><br>%{x}: %{z}<extra></extra>",
                     showscale=False,
                 ))
-                dark(fig_piv, 320)
+                dark(fig_piv, 340)
                 fig_piv.update_layout(
                     xaxis=dict(tickfont=dict(size=9), side="bottom"),
                     yaxis=dict(tickfont=dict(size=9), autorange="reversed"),
@@ -717,31 +663,27 @@ else:
                 )
                 st.plotly_chart(fig_piv, use_container_width=True)
 
-    # ── Tabela top 20 mais antigos ─────────────────────────────
-    st.markdown("##### 📋 Top 20 Atendimentos Mais Antigos em Aberto")
-    cols_tab = ["Protocolo","Atendente","Setor","Aberto em fmt","Tempo Decorrido","Faixa"]
-    df_tab = (df_abertos
-              .sort_values("_min", ascending=False)
-              .head(20)[cols_tab]
-              .rename(columns={"Aberto em fmt": "Aberto em", "Faixa": "Faixa de Tempo"}))
+        # ── Tabela top 20 ──────────────────────────────────────
+        st.markdown("#### 📋 Top 20 Atendimentos Mais Antigos em Aberto")
+        cols_tab = ["Protocolo","Atendente","Setor","Aberto em fmt","Tempo Decorrido","Faixa"]
+        df_tab = (df_abertos
+                  .sort_values("_min", ascending=False)
+                  .head(20)[cols_tab]
+                  .rename(columns={"Aberto em fmt":"Aberto em","Faixa":"Faixa de Tempo"}))
 
-    FAIXA_STYLE = {
-        "⛔ Acima de 1 dia útil":   "background-color:#2d1229; color:#c084fc",
-        "🔵 8h a 24h (1 dia útil)": "background-color:#172035; color:#60a5fa",
-        "🔴 4h a 8h":               "background-color:#2d1515; color:#f87171",
-        "🟠 1h a 4h":               "background-color:#2d1f0a; color:#fb923c",
-        "🟡 30 min a 1h":           "background-color:#2a2007; color:#fbbf24",
-        "🟢 5 a 30 min":            "background-color:#0f2a1a; color:#4ade80",
-        "⚡ Menos de 5 min":        "background-color:#1a1a2e; color:#818cf8",
-    }
+        # pandas >= 2.1 usa .map() em vez de .applymap()
+        try:
+            styled = df_tab.style.map(
+                lambda v: FAIXA_STYLE.get(str(v), ""), subset=["Faixa de Tempo"])
+        except AttributeError:
+            styled = df_tab.style.applymap(
+                lambda v: FAIXA_STYLE.get(str(v), ""), subset=["Faixa de Tempo"])
 
-    st.dataframe(
-        df_tab.style
-        .applymap(lambda v: FAIXA_STYLE.get(str(v), ""), subset=["Faixa de Tempo"])
-        .format({"Protocolo": "{}"}),
-        use_container_width=True,
-        height=min(60 + len(df_tab) * 38, 460),
-    )
+        st.dataframe(
+            styled.format({"Protocolo": "{}"}),
+            use_container_width=True,
+            height=min(60 + len(df_tab) * 38, 460),
+        )
 
 # ─────────────────────────────────────────────
 # Rodapé + Auto-refresh a cada 5 minutos

@@ -176,6 +176,24 @@ except FileNotFoundError:
     st.stop()
 
 # ─────────────────────────────────────────────
+# Helper: tema escuro para gráficos Plotly
+# ─────────────────────────────────────────────
+FC = "#c8d0e0"   # cor padrão de texto nos gráficos
+
+def dark(fig, height=320):
+    fig.update_layout(
+        paper_bgcolor="#1a1d27",
+        plot_bgcolor="#1a1d27",
+        font=dict(color=FC, family="Inter, sans-serif"),
+        xaxis=dict(gridcolor="#2e3450", linecolor="#2e3450", tickfont=dict(size=11)),
+        yaxis=dict(gridcolor="#2e3450", linecolor="#2e3450", tickfont=dict(size=11)),
+        legend=dict(bgcolor="rgba(0,0,0,0)", font=dict(size=12)),
+        margin=dict(l=10, r=10, t=40, b=10),
+        height=height,
+    )
+    return fig
+
+# ─────────────────────────────────────────────
 # Sidebar – Filtros
 # ─────────────────────────────────────────────
 with st.sidebar:

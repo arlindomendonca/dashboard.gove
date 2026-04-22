@@ -515,12 +515,32 @@ if not df_cross.empty:
     pivot = pivot[cols_ok]
     pivot["Total"] = pivot.sum(axis=1)
     pivot = pivot.sort_values("Total", ascending=False)
+
+    # Heatmap via Plotly (sem matplotlib)
+    fig_heat = go.Figure(go.Heatmap(
+        z=pivot[cols_ok].values,
+        x=[c.split(" ", 1)[-1] if " " in c else c for c in cols_ok],
+        y=pivot.index.tolist(),
+        colorscale="Blues",
+        text=pivot[cols_ok].values,
+        texttemplate="%{text:,}",
+        textfont=dict(size=11),
+        hovertemplate="<b>%{y}</b><br>%{x}: %{z:,}<extra></extra>",
+        showscale=True,
+    ))
+    dark(fig_heat, max(300, 60 + len(pivot) * 38))
+    fig_heat.update_layout(
+        xaxis=dict(tickfont=dict(size=10), side="bottom"),
+        yaxis=dict(tickfont=dict(size=10), autorange="reversed"),
+        margin=dict(l=10, r=10, t=20, b=60),
+    )
+    st.plotly_chart(fig_heat, use_container_width=True)
+
+    # Tabela simples sem gradient (sem matplotlib)
     st.dataframe(
-        pivot.style
-        .background_gradient(cmap="Blues", subset=cols_ok)
-        .format("{:,.0f}"),
+        pivot.style.format("{:,.0f}"),
         use_container_width=True,
-        height=min(60 + len(pivot) * 38, 520),
+        height=min(60 + len(pivot) * 38, 420),
     )
 else:
     st.info("Sem dados para o cruzamento com os filtros atuais.")
